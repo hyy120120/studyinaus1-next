@@ -17,6 +17,8 @@ export default function Header() {
     const router = useRouter();
     const pathname = usePathname();
 
+    if (pathname.startsWith("/RKAZN")) return null;
+
     return (
         <header className="glass-header" data-testid="site-header">
             <div className="gsa-container flex items-center justify-between h-16 md:h-20">

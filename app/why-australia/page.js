@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
     ArrowRight, Sparkles, Briefcase, Globe2, Trophy, ShieldCheck, HeartHandshake,
-    GraduationCap, BookOpen, Check, DollarSign, FileText, Plane
+    GraduationCap, BookOpen, Check, DollarSign, FileText, Plane, PiggyBank
 } from "lucide-react";
 import Footer from "@/components/Footer";
 import Reveal from "@/components/Reveal";
@@ -138,8 +138,8 @@ export default function WhyAustraliaPage() {
 
             {/* COST BREAKDOWN TABLE */}
             <section className="gsa-section">
-                <div className="gsa-container max-w-4xl">
-                    <Reveal>
+                <div className="gsa-container max-w-6xl">
+                    <Reveal className="max-w-2xl">
                         <div className="gsa-overline mb-4">The numbers</div>
                         <h2 className="gsa-h2 mb-3">What it actually costs.</h2>
                         <p className="gsa-body mb-8">
@@ -147,30 +147,54 @@ export default function WhyAustraliaPage() {
                             All figures in Australian Dollars.
                         </p>
                     </Reveal>
-                    <Reveal delay={0.1} className="surface-card overflow-hidden">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="bg-secondary text-white text-left">
-                                    <th className="px-6 py-4 font-display font-bold">Item</th>
-                                    <th className="px-6 py-4 font-display font-bold">Amount (AUD)</th>
-                                    <th className="px-6 py-4 font-display font-bold hidden md:table-cell">Notes</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                                {COSTS.map((c) => (
-                                    <tr key={c.label} className="hover:bg-muted/40 transition-colors">
-                                        <td className="px-6 py-4 text-secondary font-medium">{c.label}</td>
-                                        <td className="px-6 py-4 font-display font-bold text-primary whitespace-nowrap">{c.value}</td>
-                                        <td className="px-6 py-4 text-muted-foreground hidden md:table-cell">{c.note}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </Reveal>
-                    <p className="text-xs text-muted-foreground mt-4">
-                        Sources: Department of Home Affairs Subclass 500 financial requirements (updated 10 May 2024),
-                        Study Australia cost-of-living guidance.
-                    </p>
+                    <div className="grid lg:grid-cols-3 gap-6 items-start">
+                        <div className="lg:col-span-2">
+                            <Reveal delay={0.1} className="surface-card overflow-hidden">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="bg-secondary text-white text-left">
+                                            <th className="px-6 py-4 font-display font-bold">Item</th>
+                                            <th className="px-6 py-4 font-display font-bold">Amount (AUD)</th>
+                                            <th className="px-6 py-4 font-display font-bold hidden md:table-cell">Notes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {COSTS.map((c) => (
+                                            <tr key={c.label} className="hover:bg-muted/40 transition-colors">
+                                                <td className="px-6 py-4 text-secondary font-medium">{c.label}</td>
+                                                <td className="px-6 py-4 font-display font-bold text-primary whitespace-nowrap">{c.value}</td>
+                                                <td className="px-6 py-4 text-muted-foreground hidden md:table-cell">{c.note}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </Reveal>
+                            <p className="text-xs text-muted-foreground mt-4">
+                                Sources: Department of Home Affairs Subclass 500 financial requirements (updated 10 May 2024),
+                                Study Australia cost-of-living guidance.
+                            </p>
+                        </div>
+
+                        <div className="space-y-6 lg:sticky lg:top-24">
+                            <Reveal delay={0.14} className="surface-card p-6 bg-secondary text-white border-secondary">
+                                <PiggyBank className="text-primary mb-3" size={22} strokeWidth={1.5} />
+                                <h3 className="font-display font-bold text-base mb-4">Quick ways to save</h3>
+                                <ul className="space-y-2.5 text-xs text-white/80">
+                                    <li className="flex gap-2"><span className="text-primary font-bold">•</span> Regional campuses: ~10-20% lower tuition</li>
+                                    <li className="flex gap-2"><span className="text-primary font-bold">•</span> University scholarships up to 50% off</li>
+                                    <li className="flex gap-2"><span className="text-primary font-bold">•</span> Part-time work offsets living costs</li>
+                                    <li className="flex gap-2"><span className="text-primary font-bold">•</span> Lock forex rates early</li>
+                                </ul>
+                            </Reveal>
+
+                            <Reveal delay={0.22} className="surface-card p-6 text-center">
+                                <p className="text-sm text-secondary font-medium mb-4">Want a cost estimate specific to your course?</p>
+                                <Link href="/book-counselling" className="btn-primary w-full text-sm justify-center">
+                                    Book free counselling
+                                </Link>
+                            </Reveal>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -215,21 +239,38 @@ export default function WhyAustraliaPage() {
 
             {/* FAQ */}
             <section className="gsa-section">
-                <div className="gsa-container max-w-3xl">
-                    <Reveal>
+                <div className="gsa-container max-w-6xl">
+                    <Reveal className="max-w-2xl">
                         <div className="gsa-overline mb-4">FAQ</div>
                         <h2 className="gsa-h2 mb-10">Answers to the questions students actually ask.</h2>
                     </Reveal>
-                    <div className="space-y-4">
-                        {FAQ.map((f, idx) => (
-                            <Reveal key={f.q} as="details" delay={0.04 * idx} className="surface-card p-6 group">
-                                <summary className="font-display font-bold text-secondary cursor-pointer flex items-center justify-between gap-4 list-none">
-                                    <span>{f.q}</span>
-                                    <span className="text-primary text-2xl leading-none group-open:rotate-45 transition-transform">+</span>
-                                </summary>
-                                <p className="mt-4 text-sm text-foreground/80 leading-relaxed">{f.a}</p>
-                            </Reveal>
-                        ))}
+                    <div className="grid lg:grid-cols-3 gap-6 items-start">
+                        <div className="lg:col-span-2 space-y-4">
+                            {FAQ.map((f, idx) => (
+                                <Reveal key={f.q} as="details" delay={0.04 * idx} className="surface-card p-6 group">
+                                    <summary className="font-display font-bold text-secondary cursor-pointer flex items-center justify-between gap-4 list-none">
+                                        <span>{f.q}</span>
+                                        <span className="text-primary text-2xl leading-none group-open:rotate-45 transition-transform">+</span>
+                                    </summary>
+                                    <p className="mt-4 text-sm text-foreground/80 leading-relaxed">{f.a}</p>
+                                </Reveal>
+                            ))}
+                        </div>
+
+                        <Reveal delay={0.2} className="surface-card p-6 bg-secondary text-white border-secondary lg:sticky lg:top-24">
+                            <Sparkles className="text-primary mb-3" size={22} strokeWidth={1.5} />
+                            <h3 className="font-display font-bold text-base mb-2">Still have questions?</h3>
+                            <p className="text-xs text-white/70 leading-relaxed mb-5">
+                                Every profile is different. Talk to a counsellor and get answers specific to your
+                                course, budget, and timeline.
+                            </p>
+                            <Link href="/book-counselling" className="btn-primary w-full text-sm justify-center">
+                                Book free counselling
+                            </Link>
+                            <a href="tel:+919537369597" className="block text-center text-xs text-white/60 hover:text-white mt-4">
+                                or call +91 95373 69597
+                            </a>
+                        </Reveal>
                     </div>
                 </div>
             </section>
