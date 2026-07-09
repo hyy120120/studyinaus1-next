@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { GraduationCap, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,9 +21,15 @@ export default function Header() {
         <header className="glass-header" data-testid="site-header">
             <div className="gsa-container flex items-center justify-between h-16 md:h-20">
                 <Link href="/" className="flex items-center gap-2.5" data-testid="brand-logo">
-                    <span className="w-9 h-9 rounded-xl bg-secondary text-white grid place-items-center">
-                        <GraduationCap size={20} strokeWidth={1.8} />
-                    </span>
+                    <div className="w-9 h-9">
+                        <Image
+                            src="/gostudyustraliaGreen.png"
+                            alt="GoStudyInAustralia"
+                            width={36}
+                            height={36}
+                            className="object-contain"
+                        />
+                    </div>
                     <div className="leading-tight">
                         <div className="font-display font-black text-secondary text-base tracking-tight">GoStudyInAustralia</div>
                         <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">by Ontrack Education</div>
