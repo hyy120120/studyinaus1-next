@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /RKAZN
+Disallow: /result/
+
+Sitemap: https://gostudyinaustralia.com/sitemap.xml

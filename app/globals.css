@@ -1,0 +1,85 @@
+/* GoStudyInAustralia - Tailwind theme (Organic & Earthy) */
+@import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,500,700,400,900&f[]=satoshi@900,700,500,300,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 48 24% 97%;        /* #F9F8F5 */
+        --foreground: 152 13% 8%;        /* #121815 */
+        --card: 0 0% 100%;
+        --card-foreground: 152 13% 8%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 152 13% 8%;
+        --primary: 11 53% 52%;           /* #C55B43 terracotta */
+        --primary-foreground: 0 0% 100%;
+        --secondary: 154 28% 16%;        /* #1A362B forest */
+        --secondary-foreground: 0 0% 100%;
+        --muted: 45 17% 93%;             /* #F1EFEB */
+        --muted-foreground: 153 6% 39%;  /* #5C6A64 */
+        --accent: 45 17% 93%;
+        --accent-foreground: 152 13% 8%;
+        --destructive: 2 64% 50%;        /* #D03027 */
+        --destructive-foreground: 0 0% 100%;
+        --border: 40 17% 87%;            /* #E3E0D8 */
+        --input: 40 17% 87%;
+        --ring: 11 53% 52%;
+        --radius: 0.75rem;
+    }
+}
+
+@layer base {
+    * { @apply border-border; }
+    html, body, #root { @apply bg-background text-foreground; }
+    html { scroll-behavior: smooth; }
+    body {
+        font-family: 'Satoshi', system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        margin: 0;
+    }
+    h1, h2, h3, h4, h5, h6, .font-display {
+        font-family: 'Cabinet Grotesk', 'Satoshi', system-ui, sans-serif;
+        letter-spacing: -0.02em;
+    }
+    ::selection { background: #C55B43; color: white; }
+}
+
+@layer components {
+    .gsa-overline { @apply text-xs uppercase tracking-[0.22em] font-bold text-primary; }
+    .gsa-h1 { @apply font-display text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.02] text-secondary; }
+    .gsa-h2 { @apply font-display text-2xl sm:text-3xl lg:text-4xl font-bold leading-tight text-secondary; }
+    .gsa-h3 { @apply font-display text-xl sm:text-2xl font-bold text-secondary; }
+    .gsa-body { @apply text-base leading-relaxed text-foreground/80; }
+    .gsa-container { @apply px-6 md:px-12 lg:px-24; }
+    .gsa-section { @apply py-20 md:py-32; }
+    .btn-primary {
+        @apply inline-flex items-center justify-center gap-2 bg-primary text-white font-bold rounded-full px-7 py-3.5
+               hover:bg-[#A84732] transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed;
+    }
+    .btn-secondary {
+        @apply inline-flex items-center justify-center gap-2 bg-secondary text-white font-bold rounded-full px-7 py-3.5
+               hover:bg-secondary/90 transition-colors shadow-sm;
+    }
+    .btn-outline {
+        @apply inline-flex items-center justify-center gap-2 border-2 border-border text-secondary font-bold rounded-full px-7 py-3.5
+               hover:border-secondary hover:bg-muted transition-colors;
+    }
+    .surface-card {
+        @apply bg-white border border-border rounded-xl shadow-[0_8px_30px_rgba(26,54,43,0.04)];
+    }
+    .glass-header {
+        @apply bg-[#F9F8F5]/80 backdrop-blur-xl border-b border-border/60 sticky top-0 z-50;
+    }
+}
+
+/* App-level overrides (kept minimal — most styling lives in Tailwind utility classes) */
+.App { min-height: 100vh; }
+
+/* Lenis smooth-scroll integration */
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+.lenis.lenis-stopped { overflow: hidden; }
