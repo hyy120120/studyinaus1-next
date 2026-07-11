@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, CheckCircle2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import Footer from "@/components/Footer";
@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { computeScore, EDUCATION_LEVELS, SPONSOR_SLOTS } from "@/lib/scoring";
+import { computeScore, EDUCATION_LEVELS } from "@/lib/scoring";
 import { calculateEmi } from "@/lib/emi";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
 import { validateCalculatorStep, validateCalculatorForm } from "@/lib/validation";
@@ -34,8 +34,29 @@ const STEPS = [
 const CURRENT_YEAR = new Date().getFullYear();
 const EMPLOYMENT_STATUSES = ["Employed", "Self-employed", "Not Applicable", "Unemployed", "Student"];
 const SALARY_MODES = ["Bank Transfer", "Cash", "Cheque"];
-const SPONSOR_RELATIONS = ["Father", "Mother", "Self", "Spouse", "Sibling", "Grandparent", "Uncle/Aunt", "Other"];
+const SPONSOR_RELATIONS = ["Father", "Mother", "Uncle", "Aunt", "Brother", "Sister", "Self", "Spouse", "Grandparent", "Other"];
 const SPONSOR_OCCUPATIONS = ["Salaried", "Business", "Agriculture", "Retired", "Other"];
+
+const createEmploymentRecord = () => ({
+    id: `employment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    status: "Not Applicable", employer: "", date_of_joining: "", last_working_day: "",
+    currently_working: true, itr_filed: false, salary_mode: "Bank Transfer",
+});
+
+const educationTimeline = (dob, key) => {
+    const birthYear = new Date(dob).getFullYear();
+    if (!birthYear) return { min: 1950, max: CURRENT_YEAR };
+    const offsets = { y10: 15, y12: 17, graduate: 20, postgraduate: 22, phd: 25 };
+    const expected = birthYear + offsets[key];
+    return { min: expected - 3, max: Math.min(expected + 8, CURRENT_YEAR) };
+};
+
+const gradeFor = (obtained, total) => {
+    const percentage = Number(total) > 0 ? (Number(obtained) / Number(total)) * 100 : null;
+    if (percentage === null || !Number.isFinite(percentage)) return null;
+    const grade = percentage >= 85 ? "High Distinction" : percentage >= 75 ? "Distinction" : percentage >= 65 ? "Credit" : percentage >= 50 ? "Pass" : "Below pass";
+    return { percentage: percentage.toFixed(1), grade };
+};
 
 const INITIAL = {
     // Personal
@@ -49,6 +70,7 @@ const INITIAL = {
     intended_course: "",
     intended_university: "",
     intake_year: CURRENT_YEAR + 1,
+    highest_qualification: "",
 
     // Academic
     education: EDUCATION_LEVELS.map((l) => ({
@@ -69,23 +91,23 @@ const INITIAL = {
     english_test: "IELTS",
     exam_date: "",
     tentative_exam_date: "",
-    listening: 6.5,
-    reading: 6.5,
-    writing: 6.5,
-    speaking: 6.5,
-    overall_score: 6.5,
-    exam_attempts: 1,
+    listening: "",
+    reading: "",
+    writing: "",
+    speaking: "",
+    overall_score: "",
+    exam_attempts: "",
 
     // Sponsors & income proof
-    sponsors: SPONSOR_SLOTS.map((s) => ({
-        id: s.id,
-        relation: s.relation,
-        applicable: s.defaultApplicable,
+    sponsors: SPONSOR_RELATIONS.map((relation) => ({
+        id: relation.toLowerCase(),
+        relation,
+        applicable: false,
         employment_type: "",
         other_occupation: "",
         itr_timely: false,
         itr_3yr: false,
-        annual_income_inr: 0,
+        annual_income_inr: "",
         docs: [],
     })),
 
@@ -105,6 +127,7 @@ const INITIAL = {
     work2_itr_filed: false,
     work2_salary_mode: "Bank Transfer",
     has_second_employment: false,
+    employment_records: [createEmploymentRecord()],
     work_relevant_to_course: false,
     work_verification_done: false,
 
@@ -120,8 +143,6 @@ const INITIAL = {
     loan_amount_inr: "",
     annual_interest_rate: "",
     loan_tenure_years: "",
-    character_declaration: false,
-    health_declaration: false,
     savings_available: false,
     savings_amount_inr: "",
     fixed_deposits_available: false,
@@ -199,16 +220,29 @@ export default function CalculatorClient() {
         }));
     };
 
-    const toggleSponsorDoc = (id, docKey) => {
+    const updateEmployment = (id, field, value) => setForm((f) => ({ ...f, employment_records: f.employment_records.map((record) => record.id === id ? { ...record, [field]: value } : record) }));
+    const addEmployment = () => setForm((f) => ({ ...f, employment_records: [...f.employment_records, createEmploymentRecord()] }));
+    const removeEmployment = (id) => setForm((f) => ({ ...f, employment_records: f.employment_records.length > 1 ? f.employment_records.filter((record) => record.id !== id) : f.employment_records }));
+    const addSponsor = (relation) => setForm((f) => ({ ...f, sponsors: f.sponsors.map((s) => s.relation === relation ? { ...s, applicable: true } : s) }));
+    const removeSponsor = (id) => updateSponsor(id, "applicable", false);
+
+    const selectHighestQualification = (key) => {
         setForm((f) => ({
             ...f,
-            sponsors: f.sponsors.map((s) => {
-                if (s.id !== id) return s;
-                const has = s.docs.includes(docKey);
-                return { ...s, docs: has ? s.docs.filter((d) => d !== docKey) : [...s.docs, docKey] };
-            }),
+            highest_qualification: key,
+            education: f.education.map((level, index) => ({ ...level, applicable: index <= EDUCATION_LEVELS.findIndex((item) => item.key === key) })),
         }));
     };
+
+    const updateSponsorEmployment = (id, employment_type) => {
+        setForm((f) => ({ ...f, sponsors: f.sponsors.map((s) => s.id === id ? { ...s, employment_type, docs: documentsForSponsor({ employment_type }).map((doc) => ({ ...doc, status: "", year_established: "", remarks: "" })) } : s) }));
+    };
+
+    const updateSponsorDoc = (id, docKey, field, value) => {
+        setForm((f) => ({ ...f, sponsors: f.sponsors.map((s) => s.id === id ? { ...s, docs: s.docs.map((doc) => doc.key === docKey ? { ...doc, [field]: value } : doc) } : s) }));
+    };
+
+    const totalSponsorIncome = useMemo(() => form.sponsors.filter((s) => s.applicable).reduce((total, s) => total + (Number(s.annual_income_inr) || 0), 0), [form.sponsors]);
 
     useEffect(() => {
         if (form.dob) set("age", calcAge(form.dob));
@@ -331,6 +365,12 @@ export default function CalculatorClient() {
                                     <Field label="Intended intake year" error={errors.intake_year} testId="field-intake_year">
                                         <Input data-testid="input-intake_year" type="number" value={form.intake_year} onChange={(e) => set("intake_year", +e.target.value)} />
                                     </Field>
+                                    <Field label="Highest completed qualification" error={errors.highest_qualification} testId="field-highest_qualification">
+                                        <Select value={form.highest_qualification} onValueChange={selectHighestQualification}>
+                                            <SelectTrigger data-testid="select-highest_qualification"><SelectValue placeholder="Select qualification" /></SelectTrigger>
+                                            <SelectContent>{EDUCATION_LEVELS.map((level) => <SelectItem key={level.key} value={level.key}>{level.label}</SelectItem>)}</SelectContent>
+                                        </Select>
+                                    </Field>
                                     <Field label="Intended university (optional)" testId="field-intended_university">
                                         <Input data-testid="input-intended_university" value={form.intended_university} onChange={(e) => set("intended_university", e.target.value)} placeholder="UNSW Sydney" />
                                     </Field>
@@ -346,15 +386,11 @@ export default function CalculatorClient() {
                             {step === 1 && (
                                 <div className="space-y-6">
                                     {errors.education && <p className="text-xs text-destructive">{errors.education}</p>}
-                                    {form.education.map((lvl) => (
+                                    {form.education.filter((lvl) => lvl.applicable).map((lvl) => (
                                         <div key={lvl.key} className="border border-border rounded-xl p-5" data-testid={`edu-card-${lvl.key}`}>
-                                            <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                                                <Checkbox checked={lvl.applicable} onCheckedChange={(v) => updateEducation(lvl.key, "applicable", !!v)} data-testid={`edu-toggle-${lvl.key}`} />
-                                                <span className="font-display font-bold text-secondary">{lvl.label}</span>
-                                            </label>
-                                            {lvl.applicable && (
+                                            <div className="mb-4"><span className="font-display font-bold text-secondary">{lvl.label}</span><p className="text-xs text-muted-foreground mt-1">Completed qualification</p></div>
                                                 <div className="grid md:grid-cols-3 gap-4">
-                                                    <Field label="Stream / Course" testId={`field-edu_stream_${lvl.key}`}>
+                                                    <Field label="Stream / Course" error={errors[`edu_${lvl.key}_stream`]} testId={`field-edu_stream_${lvl.key}`}>
                                                         <Input value={lvl.stream} onChange={(e) => updateEducation(lvl.key, "stream", e.target.value)} placeholder="e.g. Science, Commerce" data-testid={`input-edu_stream_${lvl.key}`} />
                                                     </Field>
                                                     <Field label="Marks obtained" error={errors[`edu_${lvl.key}`]} testId={`field-edu_marks_${lvl.key}`}>
@@ -363,12 +399,13 @@ export default function CalculatorClient() {
                                                     <Field label="Total marks" testId={`field-edu_total_${lvl.key}`}>
                                                         <Input type="number" value={lvl.marks_total} onChange={(e) => updateEducation(lvl.key, "marks_total", e.target.value)} placeholder="e.g. 100" data-testid={`input-edu_marks_total_${lvl.key}`} />
                                                     </Field>
-                                                    <Field label="Start year" testId={`field-edu_start_${lvl.key}`}>
+                                                    <Field label="Start year" error={errors[`edu_${lvl.key}_start`]} testId={`field-edu_start_${lvl.key}`}>
                                                         <Input type="number" value={lvl.start_year} onChange={(e) => updateEducation(lvl.key, "start_year", e.target.value)} data-testid={`input-edu_start_${lvl.key}`} />
                                                     </Field>
-                                                    <Field label="End year" testId={`field-edu_end_${lvl.key}`}>
-                                                        <Input type="number" value={lvl.end_year} onChange={(e) => updateEducation(lvl.key, "end_year", e.target.value)} data-testid={`input-edu_end_${lvl.key}`} />
+                                                    <Field label="End year" error={errors[`edu_${lvl.key}_end`]} testId={`field-edu_end_${lvl.key}`}>
+                                                        <Input type="number" min={educationTimeline(form.dob, lvl.key).min} max={educationTimeline(form.dob, lvl.key).max} value={lvl.end_year} onChange={(e) => updateEducation(lvl.key, "end_year", e.target.value)} placeholder={`${educationTimeline(form.dob, lvl.key).min}–${educationTimeline(form.dob, lvl.key).max}`} data-testid={`input-edu_end_${lvl.key}`} />
                                                     </Field>
+                                                    <div className="rounded-lg bg-muted px-4 py-3 text-sm"><p className="text-xs uppercase tracking-wider text-muted-foreground">Calculated result</p>{gradeFor(lvl.marks_obtained, lvl.marks_total) ? <p className="font-semibold text-secondary mt-1">{gradeFor(lvl.marks_obtained, lvl.marks_total).percentage}% · {gradeFor(lvl.marks_obtained, lvl.marks_total).grade}</p> : <p className="text-muted-foreground mt-1">Enter marks to calculate</p>}</div>
                                                     <Field label="Backlogs?" testId={`field-edu_bl_${lvl.key}`}>
                                                         <YesNo value={lvl.has_backlogs} onChange={(v) => updateEducation(lvl.key, "has_backlogs", v)} testId={`radio-edu_bl_${lvl.key}`} />
                                                     </Field>
@@ -383,9 +420,9 @@ export default function CalculatorClient() {
                                                         </>
                                                     )}
                                                 </div>
-                                            )}
                                         </div>
                                     ))}
+                                    {!form.highest_qualification && <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">Select your highest completed qualification in Personal Details to add only the education records relevant to you.</p>}
                                 </div>
                             )}
 
@@ -394,40 +431,36 @@ export default function CalculatorClient() {
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <Field label="Exam name" error={errors.english_test} testId="field-english_test">
                                         <Select value={form.english_test} onValueChange={(v) => {
-                                            const defaultScore = v === "PTE" ? 50 : v === "TOEFL" ? 60 : v === "Duolingo" ? 95 : v === "IELTS" ? 6.5 : 0;
-                                            setForm((f) => ({ ...f, english_test: v, listening: defaultScore, reading: defaultScore, writing: defaultScore, speaking: defaultScore, overall_score: defaultScore }));
+                                            setForm((f) => ({ ...f, english_test: v, listening: "", reading: "", writing: "", speaking: "", overall_score: "", exam_date: "" }));
                                         }}>
                                             <SelectTrigger data-testid="select-english_test"><SelectValue /></SelectTrigger>
                                             <SelectContent>
-                                                {["IELTS", "PTE", "TOEFL", "Duolingo", "Not Yet Taken"].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                                {["IELTS", "PTE", "TOEFL", "Duolingo", "Tentative"].map((t) => <SelectItem key={t} value={t}>{t === "Tentative" ? "Tentative exam date (not yet taken)" : t}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </Field>
-                                    {form.english_test !== "Not Yet Taken" && (
+                                    {form.english_test === "Tentative" ? <Field label="Tentative exam date" error={errors.tentative_exam_date} testId="field-tentative_exam_date"><Input data-testid="input-tentative_exam_date" type="date" value={form.tentative_exam_date} onChange={(e) => set("tentative_exam_date", e.target.value)} min={new Date().toISOString().slice(0, 10)} /></Field> : (
                                         <>
                                             <Field label="Number of attempts" error={errors.exam_attempts} testId="field-exam_attempts">
-                                                <Input data-testid="input-exam_attempts" type="number" min="1" value={form.exam_attempts} onChange={(e) => set("exam_attempts", +e.target.value)} />
+                                                <Input data-testid="input-exam_attempts" type="number" min="1" value={form.exam_attempts} onChange={(e) => set("exam_attempts", e.target.value)} />
                                             </Field>
-                                            <Field label="Exam date (if taken)" testId="field-exam_date">
+                                            <Field label="Exam date" error={errors.exam_date} testId="field-exam_date">
                                                 <Input data-testid="input-exam_date" type="date" value={form.exam_date} onChange={(e) => set("exam_date", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
                                             </Field>
-                                            <Field label="Tentative exam date (if not yet taken)" testId="field-tentative_exam_date">
-                                                <Input data-testid="input-tentative_exam_date" type="date" value={form.tentative_exam_date} onChange={(e) => set("tentative_exam_date", e.target.value)} />
+                                            <Field label={`Listening (${form.english_test === "IELTS" ? "0–9 bands" : form.english_test === "PTE" ? "10–90" : form.english_test === "TOEFL" ? "0–30" : "10–160"})`} error={errors.listening} testId="field-listening">
+                                                <Input data-testid="input-listening" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.listening} onChange={(e) => set("listening", e.target.value)} />
                                             </Field>
-                                            <Field label={`Listening (${form.english_test === "IELTS" ? "0–9 bands" : form.english_test === "PTE" ? "10–90" : form.english_test === "TOEFL" ? "0–30" : "10–160"})`} testId="field-listening">
-                                                <Input data-testid="input-listening" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.listening} onChange={(e) => set("listening", +e.target.value)} />
+                                            <Field label="Reading" error={errors.reading} testId="field-reading">
+                                                <Input data-testid="input-reading" type="number" step="0.5" value={form.reading} onChange={(e) => set("reading", e.target.value)} />
                                             </Field>
-                                            <Field label="Reading" testId="field-reading">
-                                                <Input data-testid="input-reading" type="number" step="0.5" value={form.reading} onChange={(e) => set("reading", +e.target.value)} />
+                                            <Field label="Writing" error={errors.writing} testId="field-writing">
+                                                <Input data-testid="input-writing" type="number" step="0.5" value={form.writing} onChange={(e) => set("writing", e.target.value)} />
                                             </Field>
-                                            <Field label="Writing" testId="field-writing">
-                                                <Input data-testid="input-writing" type="number" step="0.5" value={form.writing} onChange={(e) => set("writing", +e.target.value)} />
-                                            </Field>
-                                            <Field label="Speaking" testId="field-speaking">
-                                                <Input data-testid="input-speaking" type="number" step="0.5" value={form.speaking} onChange={(e) => set("speaking", +e.target.value)} />
+                                            <Field label="Speaking" error={errors.speaking} testId="field-speaking">
+                                                <Input data-testid="input-speaking" type="number" step="0.5" value={form.speaking} onChange={(e) => set("speaking", e.target.value)} />
                                             </Field>
                                             <Field label={`${form.english_test} overall score`} error={errors.overall_score} testId="field-overall_score">
-                                                <Input data-testid="input-overall_score" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.overall_score} onChange={(e) => set("overall_score", +e.target.value)} />
+                                                <Input data-testid="input-overall_score" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.overall_score} onChange={(e) => set("overall_score", e.target.value)} />
                                             </Field>
                                         </>
                                     )}
@@ -435,26 +468,21 @@ export default function CalculatorClient() {
                             )}
 
                             {/* STEP 3 — SPONSORS & INCOME PROOF */}
-                            {(step === 6 || step === 7) && (
+                            {step === 6 && (
                                 <div className="space-y-6">
                                     {errors.sponsors && <p className="text-xs text-destructive">{errors.sponsors}</p>}
-                                    {form.sponsors.map((sp) => (
+                                    <Field label="Who will sponsor you?"><Select value="" onValueChange={addSponsor}><SelectTrigger><SelectValue placeholder="Add a sponsor" /></SelectTrigger><SelectContent>{form.sponsors.filter((sp) => !sp.applicable).map((sp) => <SelectItem key={sp.id} value={sp.relation}>{sp.relation}</SelectItem>)}</SelectContent></Select></Field>
+                                    {form.sponsors.filter((sp) => sp.applicable).map((sp) => (
                                         <div key={sp.id} className="border border-border rounded-xl p-5" data-testid={`sponsor-card-${sp.id}`}>
-                                            <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                                                <Checkbox checked={sp.applicable} onCheckedChange={(v) => updateSponsor(sp.id, "applicable", !!v)} data-testid={`sponsor-toggle-${sp.id}`} />
-                                                <span className="font-display font-bold text-secondary">Include this sponsor</span>
-                                            </label>
+                                            <div className="flex items-center justify-between mb-4"><span className="font-display font-bold text-secondary">{sp.relation}</span><button type="button" onClick={() => removeSponsor(sp.id)} className="text-sm font-medium text-destructive">Remove</button></div>
                                             {sp.applicable && (
                                                 <>
                                                     <div className="grid md:grid-cols-3 gap-4 mb-4">
                                                         <Field label="Sponsor relation" error={errors[`sponsor_relation_${sp.id}`]}>
-                                                            <Select value={sp.relation} onValueChange={(v) => updateSponsor(sp.id, "relation", v)}>
-                                                                <SelectTrigger><SelectValue placeholder="Select relation" /></SelectTrigger>
-                                                                <SelectContent>{SPONSOR_RELATIONS.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
-                                                            </Select>
+                                                            {sp.relation === "Other" ? <Input value={sp.other_relation || ""} onChange={(e) => updateSponsor(sp.id, "other_relation", e.target.value)} placeholder="Specify relationship" /> : <Input value={sp.relation} readOnly className="bg-muted" />}
                                                         </Field>
                                                         <Field label="Employment type" testId={`field-sponsor_emp_${sp.id}`}>
-                                                            <Select value={sp.employment_type} onValueChange={(v) => updateSponsor(sp.id, "employment_type", v)}>
+                                                            <Select value={sp.employment_type} onValueChange={(v) => updateSponsorEmployment(sp.id, v)}>
                                                                 <SelectTrigger data-testid={`select-sponsor_emp_${sp.id}`}><SelectValue placeholder="Select" /></SelectTrigger>
                                                                 <SelectContent>
                                                                     {SPONSOR_OCCUPATIONS.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
@@ -462,7 +490,7 @@ export default function CalculatorClient() {
                                                             </Select>
                                                         </Field>
                                                         <Field label="Annual income (₹)" error={errors[`sponsor_${sp.id}`]} testId={`field-sponsor_income_${sp.id}`}>
-                                                            <Input type="number" value={sp.annual_income_inr} onChange={(e) => updateSponsor(sp.id, "annual_income_inr", +e.target.value)} data-testid={`input-sponsor_income_${sp.id}`} />
+                                                            <Input type="number" min="0" value={sp.annual_income_inr} onChange={(e) => updateSponsor(sp.id, "annual_income_inr", e.target.value)} data-testid={`input-sponsor_income_${sp.id}`} />
                                                         </Field>
                                                         {sp.employment_type === "Other" && <Field label="Specify occupation"><Input value={sp.other_occupation} onChange={(e) => updateSponsor(sp.id, "other_occupation", e.target.value)} /></Field>}
                                                         <div className="flex flex-col gap-3 pt-6">
@@ -476,30 +504,25 @@ export default function CalculatorClient() {
                                                             </label>
                                                         </div>
                                                     </div>
-                                                    <div>
-                                                        <Label className="text-xs uppercase tracking-widest text-muted-foreground mb-2 block">Income proof documents available (select at least 2)</Label>
-                                                        <div className="grid sm:grid-cols-2 gap-2">
-                                                            {documentsForSponsor(sp).map((doc) => (
-                                                                <label key={doc.key} className="flex items-center gap-2 text-xs cursor-pointer">
-                                                                    <Checkbox checked={sp.docs.includes(doc.key)} onCheckedChange={() => toggleSponsorDoc(sp.id, doc.key)} data-testid={`sponsor_doc_${sp.id}_${doc.key}`} />
-                                                                    {doc.label}
-                                                                </label>
-                                                            ))}
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground mt-2">{sp.docs.length} document(s) selected {sp.docs.length >= 2 ? "— proof complete" : ""}</p>
-                                                        {errors[`sponsor_docs_${sp.id}`] && <p className="text-xs text-destructive mt-2">{errors[`sponsor_docs_${sp.id}`]}</p>}
-                                                    </div>
                                                 </>
                                             )}
                                         </div>
                                     ))}
+                                    <div className="rounded-xl bg-muted p-5"><p className="text-xs uppercase tracking-widest text-muted-foreground">Total annual sponsor income</p><p className="font-display text-2xl font-bold text-secondary mt-1">₹{totalSponsorIncome.toLocaleString("en-IN")}</p></div>
                                 </div>
                             )}
+
+                            {step === 7 && <div className="space-y-6">{form.sponsors.filter((sp) => sp.applicable).map((sp) => <div key={sp.id} className="border border-border rounded-xl p-5"><h3 className="font-display font-bold text-secondary">{sp.relation} — {sp.employment_type || "employment type pending"}</h3>{sp.employment_type ? <div className="space-y-4 mt-4">{sp.docs.map((doc) => <div key={doc.key} className="rounded-lg bg-muted p-4 grid md:grid-cols-3 gap-4"><Field label={doc.label} error={errors[`sponsor_doc_${sp.id}_${doc.key}`]}><Select value={doc.status} onValueChange={(v) => updateSponsorDoc(sp.id, doc.key, "status", v)}><SelectTrigger><SelectValue placeholder="Document status" /></SelectTrigger><SelectContent><SelectItem value="yes">Yes</SelectItem><SelectItem value="no">No</SelectItem></SelectContent></Select></Field>{doc.year_required && <Field label="Year established" error={errors[`sponsor_doc_year_${sp.id}_${doc.key}`]}><Input type="number" value={doc.year_established} onChange={(e) => updateSponsorDoc(sp.id, doc.key, "year_established", e.target.value)} /></Field>}<Field label="Remarks"><Textarea value={doc.remarks} onChange={(e) => updateSponsorDoc(sp.id, doc.key, "remarks", e.target.value)} placeholder="Optional notes" /></Field></div>)}</div> : <p className="text-sm text-destructive mt-3">Choose an employment type in Sponsor Income first.</p>}</div>)}</div>}
 
                             {/* STEP 4 — WORK DETAILS */}
                             {step === 4 && (
                                 <div className="space-y-8">
-                                    <div>
+                                    <div className="grid md:grid-cols-2 gap-6 pb-2 border-b border-border">
+                                        <Field label="Is your work experience relevant to the intended course?"><YesNo value={form.work_relevant_to_course} onChange={(v) => set("work_relevant_to_course", v)} testId="radio-work_relevant_to_course" /></Field>
+                                        <Field label="Can this employment be independently verified?"><YesNo value={form.work_verification_done} onChange={(v) => set("work_verification_done", v)} testId="radio-work_verification_done" /></Field>
+                                    </div>
+                                    <div className="space-y-5">{form.employment_records.map((record, index) => <div key={record.id} className="rounded-xl border border-border p-5"><div className="flex justify-between items-center mb-4"><div className="gsa-overline">Employment {index + 1}</div>{form.employment_records.length > 1 && <button type="button" onClick={() => removeEmployment(record.id)} className="text-sm font-medium text-destructive">Remove</button>}</div><div className="grid md:grid-cols-2 gap-5"><Field label="Employment status"><Select value={record.status} onValueChange={(v) => updateEmployment(record.id, "status", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EMPLOYMENT_STATUSES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field>{!["Not Applicable", "Unemployed", "Student"].includes(record.status) && <><Field label="Applicant name"><Input value={`${form.first_name} ${form.last_name}`.trim()} readOnly className="bg-muted" /></Field><Field label="Employer name" error={errors[`employment_${record.id}_employer`]}><Input value={record.employer} onChange={(e) => updateEmployment(record.id, "employer", e.target.value)} /></Field><Field label="Date of joining" error={errors[`employment_${record.id}_joining`]}><Input type="date" value={record.date_of_joining} onChange={(e) => updateEmployment(record.id, "date_of_joining", e.target.value)} max={new Date().toISOString().slice(0, 10)} /></Field><Field label="Currently working here?"><YesNo value={record.currently_working} onChange={(v) => updateEmployment(record.id, "currently_working", v)} testId={`employment-${record.id}-current`} /></Field>{!record.currently_working && <Field label="Last working day"><Input type="date" value={record.last_working_day} onChange={(e) => updateEmployment(record.id, "last_working_day", e.target.value)} /></Field>}<Field label="Mode of salary"><Select value={record.salary_mode} onValueChange={(v) => updateEmployment(record.id, "salary_mode", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{SALARY_MODES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="ITR / Form 16 filed?"><YesNo value={record.itr_filed} onChange={(v) => updateEmployment(record.id, "itr_filed", v)} testId={`employment-${record.id}-itr`} /></Field></>}</div></div>)}<button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-secondary hover:bg-muted" onClick={addEmployment}><Plus size={16} /> Add more employment</button></div>
+                                    <div className="hidden">
                                         <div className="gsa-overline mb-4">Employment 1</div>
                                         <div className="grid md:grid-cols-2 gap-6">
                                             <Field label="Employment status" testId="field-work1_status">
@@ -542,11 +565,8 @@ export default function CalculatorClient() {
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label className="flex items-center gap-2 text-sm font-medium text-secondary cursor-pointer mb-4">
-                                            <Checkbox checked={form.has_second_employment} onCheckedChange={(v) => set("has_second_employment", !!v)} />
-                                            Add a second employment record
-                                        </label>
+                                    <div className="hidden">
+                                        <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-secondary hover:bg-muted mb-4" onClick={() => set("has_second_employment", !form.has_second_employment)}><Plus size={16} /> {form.has_second_employment ? "Remove employment record" : "Add more employment record"}</button>
                                         {form.has_second_employment && <>
                                         <div className="gsa-overline mb-4">Employment 2</div>
                                         <div className="grid md:grid-cols-2 gap-6">
@@ -591,7 +611,7 @@ export default function CalculatorClient() {
                                         </>}
                                     </div>
 
-                                    <div className="grid md:grid-cols-2 gap-6 pt-2 border-t border-border">
+                                    <div className="hidden grid md:grid-cols-2 gap-6 pt-2 border-t border-border">
                                         <Field label="Is your work experience relevant to the intended course?" testId="field-work_relevant_to_course">
                                             <YesNo value={form.work_relevant_to_course} onChange={(v) => set("work_relevant_to_course", v)} testId="radio-work_relevant_to_course" />
                                         </Field>
@@ -632,17 +652,9 @@ export default function CalculatorClient() {
                                                 </Field>
                                             </>
                                         )}
-                                        <div className="md:col-span-2 grid md:grid-cols-2 gap-6 pt-2 border-t border-border">
-                                            <Field label="Do you meet the character requirement (PIC 4001) — no unresolved criminal convictions, willing to provide a Police Clearance Certificate?" testId="field-character_declaration">
-                                                <YesNo value={form.character_declaration} onChange={(v) => set("character_declaration", v)} testId="radio-character_declaration" noLabel="No / Not sure" />
-                                            </Field>
-                                            <Field label="Do you meet the health requirement (PIC 4007) — no condition that would prevent an Immigration Medical Examination pass?" testId="field-health_declaration">
-                                                <YesNo value={form.health_declaration} onChange={(v) => set("health_declaration", v)} testId="radio-health_declaration" noLabel="No / Not sure" />
-                                            </Field>
-                                        </div>
                                     </div>
 
-                                    <div className="pt-4 border-t border-border">
+                                    <div className="hidden pt-4 border-t border-border">
                                         <Field label="Is an education loan required?" error={errors.education_loan_required} testId="field-education_loan_required">
                                             <YesNo value={form.education_loan_required} onChange={(v) => set("education_loan_required", v)} testId="radio-education_loan_required" />
                                         </Field>
@@ -779,17 +791,6 @@ export default function CalculatorClient() {
                             )}
 
                             {step === 9 && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <Field label="Do you meet the character requirement (PIC 4001)?" error={errors.character_declaration}>
-                                        <YesNo value={form.character_declaration} onChange={(v) => set("character_declaration", v)} testId="radio-character_declaration_step9" noLabel="No / Not sure" />
-                                    </Field>
-                                    <Field label="Do you meet the health requirement (PIC 4007)?" error={errors.health_declaration}>
-                                        <YesNo value={form.health_declaration} onChange={(v) => set("health_declaration", v)} testId="radio-health_declaration_step9" noLabel="No / Not sure" />
-                                    </Field>
-                                </div>
-                            )}
-
-                            {step === 9 && (
                                 <div className="space-y-6">
                                     <div>
                                         <div className="gsa-overline mb-2">Ready to generate your report</div>
@@ -847,5 +848,5 @@ function documentsForSponsor(sponsor) {
         Retired: ["Pension statement", "Bank statement (minimum 1 year)", "ITR – last 3 years (if applicable)"],
         Other: ["Income-source proof", "Bank statement (minimum 1 year)", "ITR – last 3 years (if applicable)"],
     };
-    return [...new Set(byOccupation[sponsor.employment_type] || [])].map((label) => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_"), label }));
+    return [...new Set(byOccupation[sponsor.employment_type] || [])].map((label) => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_"), label, year_required: /minimum 1 year|registration/.test(label.toLowerCase()) }));
 }
