@@ -311,10 +311,10 @@ export default function CalculatorClient() {
                             {step === 0 && (
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <Field label="First name" error={errors.first_name} testId="field-first_name">
-                                        <Input data-testid="input-first_name" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} placeholder="Riya" />
+                                        <Input data-testid="input-first_name" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} placeholder="Rudra" />
                                     </Field>
                                     <Field label="Last name" error={errors.last_name} testId="field-last_name">
-                                        <Input data-testid="input-last_name" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} placeholder="Patel" />
+                                        <Input data-testid="input-last_name" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} placeholder="Kapadia" />
                                     </Field>
                                     <Field label="Email address" error={errors.email} testId="field-email">
                                         <Input data-testid="input-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="you@example.com" />
