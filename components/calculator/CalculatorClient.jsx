@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight, Loader2, CheckCircle2, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ import { computeScore, EDUCATION_LEVELS } from "@/lib/scoring";
 import { calculateEmi } from "@/lib/emi";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
 import { validateCalculatorStep, validateCalculatorForm } from "@/lib/validation";
+import { POLICY_VERSIONS } from "@/lib/policies";
 
 const STEPS = [
     "Personal Details",
@@ -71,6 +73,7 @@ const INITIAL = {
     intended_university: "",
     intake_year: CURRENT_YEAR + 1,
     highest_qualification: "",
+    privacy_consent: false,
 
     // Academic
     education: EDUCATION_LEVELS.map((l) => ({
@@ -277,6 +280,11 @@ export default function CalculatorClient() {
         setSubmitting(true);
         try {
             const formForScoring = { ...form, full_name: `${form.first_name} ${form.last_name}`.trim() };
+            const context = await fetch("/api/client-context", { cache: "no-store" }).then((response) => response.ok ? response.json() : {}).catch(() => ({}));
+            formForScoring.consent = {
+                status: "accepted", accepted_at: new Date().toISOString(), privacy_policy_version: POLICY_VERSIONS.privacy,
+                terms_version: POLICY_VERSIONS.terms, consent_policy_version: POLICY_VERSIONS.consent, ip_address: context.ipAddress || null,
+            };
             const scoring = computeScore(formForScoring);
             const created_at = new Date().toISOString();
             const result = { form: formForScoring, ...scoring, created_at };
@@ -288,6 +296,12 @@ export default function CalculatorClient() {
                     created_at: serverTimestamp(),
                 });
                 id = ref.id;
+                await addDoc(collection(db, COLLECTIONS.CONSENT_AUDIT_LOGS), {
+                    user_id: id, applicant_name: formForScoring.full_name, email: formForScoring.email,
+                    ip_address: formForScoring.consent.ip_address, consent_status: "accepted",
+                    privacy_policy_version: POLICY_VERSIONS.privacy, terms_version: POLICY_VERSIONS.terms,
+                    accepted_at: serverTimestamp(), last_updated_at: serverTimestamp(),
+                });
             } else {
                 id = `local-${Date.now()}`;
             }
@@ -343,6 +357,11 @@ export default function CalculatorClient() {
                         >
                             {/* STEP 0 — PERSONAL */}
                             {step === 0 && (
+                                <div className="space-y-5">
+                                <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 text-sm text-secondary">
+                                    <label className="flex items-start gap-3 cursor-pointer"><Checkbox checked={form.privacy_consent} onCheckedChange={(value) => set("privacy_consent", Boolean(value))} /><span>I have read and agree to the <Link href="/legal/privacy" target="_blank" className="underline font-semibold">Privacy Policy</Link> and <Link href="/legal/terms" target="_blank" className="underline font-semibold">Terms of Service</Link>, and consent to the collection and processing of my personal information for this Australia visa-readiness assessment.</span></label>
+                                    {errors.privacy_consent && <p className="text-xs text-destructive mt-2">{errors.privacy_consent}</p>}
+                                </div>
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <Field label="First name" error={errors.first_name} testId="field-first_name">
                                         <Input data-testid="input-first_name" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} placeholder="Rudra" />
@@ -379,6 +398,7 @@ export default function CalculatorClient() {
                                             <Input data-testid="input-intended_course" value={form.intended_course} onChange={(e) => set("intended_course", e.target.value)} placeholder="Master of Data Science" />
                                         </Field>
                                     </div>
+                                </div>
                                 </div>
                             )}
 
@@ -470,6 +490,7 @@ export default function CalculatorClient() {
                             {/* STEP 3 — SPONSORS & INCOME PROOF */}
                             {step === 6 && (
                                 <div className="space-y-6">
+                                    <div>
                                     {errors.sponsors && <p className="text-xs text-destructive">{errors.sponsors}</p>}
                                     <Field label="Who will sponsor you?"><Select value="" onValueChange={addSponsor}><SelectTrigger><SelectValue placeholder="Add a sponsor" /></SelectTrigger><SelectContent>{form.sponsors.filter((sp) => !sp.applicable).map((sp) => <SelectItem key={sp.id} value={sp.relation}>{sp.relation}</SelectItem>)}</SelectContent></Select></Field>
                                     {form.sponsors.filter((sp) => sp.applicable).map((sp) => (
@@ -509,6 +530,7 @@ export default function CalculatorClient() {
                                         </div>
                                     ))}
                                     <div className="rounded-xl bg-muted p-5"><p className="text-xs uppercase tracking-widest text-muted-foreground">Total annual sponsor income</p><p className="font-display text-2xl font-bold text-secondary mt-1">₹{totalSponsorIncome.toLocaleString("en-IN")}</p></div>
+                                </div>
                                 </div>
                             )}
 

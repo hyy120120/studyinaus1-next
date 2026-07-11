@@ -44,6 +44,19 @@ export default function Footer() {
                     </ul>
                 </div>
                 <div>
+                    <div className="gsa-overline text-white/60 mb-3">Legal</div>
+                    <ul className="space-y-2 text-sm text-white/80">
+                        <li><Link href="/legal/privacy" className="hover:text-primary">Privacy Policy</Link></li>
+                        <li><Link href="/legal/terms" className="hover:text-primary">Terms of Service</Link></li>
+                        <li><Link href="/legal/cookies" className="hover:text-primary">Cookie Policy</Link></li>
+                        <li><Link href="/legal/disclaimer" className="hover:text-primary">Disclaimer</Link></li>
+                        <li><Link href="/legal/retention" className="hover:text-primary">Data Retention & Deletion</Link></li>
+                        <li><Link href="/legal/consent" className="hover:text-primary">User Consent Policy</Link></li>
+                        <li><Link href="/legal/refund" className="hover:text-primary">Refund & Cancellation</Link></li>
+                        <li><Link href="/legal/contact" className="hover:text-primary">Contact Us</Link></li>
+                    </ul>
+                </div>
+                <div>
                     <div className="gsa-overline text-white/60 mb-3">Contact</div>
                     <ul className="space-y-3 text-sm text-white/80">
 

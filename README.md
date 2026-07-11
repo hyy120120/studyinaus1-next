@@ -49,26 +49,15 @@ Visit `http://localhost:3000`.
 1. Create a project at console.firebase.google.com.
 2. Enable **Firestore Database** (production mode) and **Authentication →
    Email/Password**.
-3. In Firestore rules, allow writes to `visa_applications` and
-   `course_inquiries` from anyone (they're lead-capture forms), but restrict
-   reads to authenticated admins, e.g.:
+3. Deploy [`firestore.rules`](./firestore.rules). It makes public forms
+   create-only, requires consent on calculator submissions, preserves consent
+   logs as immutable records, and restricts all reads to users with the
+   Firebase custom claim `admin: true`.
 
    ```
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
-       match /visa_applications/{id} {
-         allow create: if true;
-         allow read, update, delete: if request.auth != null;
-       }
-       match /course_inquiries/{id} {
-         allow create: if true;
-         allow read, update, delete: if request.auth != null;
-       }
-       match /counselling_bookings/{id} {
-         allow create: if true;
-         allow read, update, delete: if request.auth != null;
-       }
      }
    }
    ```
@@ -76,7 +65,10 @@ Visit `http://localhost:3000`.
 4. Create your admin user under Authentication → Users (e.g.
    `admin@gostudyinaustralia.com` + a password of your choice) — this
    replaces the old seeded Mongo admin account. The admin dashboard lives at
-   `/RKAZN` (not linked anywhere in the site UI — bookmark it).
+   `/RKAZN` (not linked anywhere in the site UI — bookmark it). Set the
+   Firebase custom claim `admin: true` for that user with the Admin SDK, then
+   sign out and back in so the token refreshes. An authenticated user without
+   this claim must not be treated as an administrator.
 5. Copy `.env.local.example` to `.env.local` and fill in your Firebase Web
    App config (Project settings → General → Your apps → SDK setup and
    config).

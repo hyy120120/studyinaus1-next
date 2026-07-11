@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
+    // Public submissions are create-only. Reads and all later changes require
+    // an explicit Firebase custom admin claim, not merely a signed-in user.
+    match /visa_applications/{id} {
+      allow create: if request.resource.data.form.privacy_consent == true
+        && request.resource.data.consent.status == 'accepted';
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /course_inquiries/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /counselling_bookings/{id} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Immutable from the browser after creation. Admins can read it but
+    // should append a new event rather than overwrite consent evidence.
+    match /consent_audit_logs/{id} {
+      allow create: if request.resource.data.consent_status == 'accepted'
+        && request.resource.data.privacy_policy_version is string
+        && request.resource.data.terms_version is string;
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+  }
+}

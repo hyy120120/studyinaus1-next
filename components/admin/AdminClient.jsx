@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, Users, ChevronRight, Download, CalendarCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import {
-    onAuthStateChanged, signInWithEmailAndPassword, signOut,
+    onAuthStateChanged, signInWithEmailAndPassword, signOut, getIdTokenResult,
 } from "firebase/auth";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import Footer from "@/components/Footer";
@@ -114,6 +114,11 @@ function LoginForm({ onLoggedIn }) {
                 throw new Error("Firebase isn't configured yet — add your project keys to .env.local.");
             }
             const cred = await signInWithEmailAndPassword(auth, email, password);
+            const token = await getIdTokenResult(cred.user, true);
+            if (token.claims.admin !== true) {
+                await signOut(auth);
+                throw new Error("This account is not authorised for admin access.");
+            }
             toast.success("Welcome back, " + (cred.user.email || email));
             onLoggedIn();
         } catch (err) {
@@ -139,12 +144,14 @@ function LoginForm({ onLoggedIn }) {
 const TABS = [
     { key: "applications", label: "Visa Applications" },
     { key: "counselling", label: "Counselling" },
+    { key: "consent", label: "Consent Management" },
 ];
 
 function Dashboard({ onLogout }) {
     const [tab, setTab] = useState("applications");
     const [apps, setApps] = useState([]);
     const [bookings, setBookings] = useState([]);
+    const [consents, setConsents] = useState([]);
     const [selected, setSelected] = useState(null);
     const [loading, setLoading] = useState(true);
     const [appsDateFilter, setAppsDateFilter] = useState("");
@@ -155,9 +162,11 @@ function Dashboard({ onLogout }) {
             try {
                 const appsQ = query(collection(db, COLLECTIONS.VISA_APPLICATIONS), orderBy("created_at", "desc"));
                 const bookingsQ = query(collection(db, COLLECTIONS.COUNSELLING_BOOKINGS), orderBy("created_at", "desc"));
-                const [appsSnap, bookingsSnap] = await Promise.all([getDocs(appsQ), getDocs(bookingsQ)]);
+                const consentsQ = query(collection(db, COLLECTIONS.CONSENT_AUDIT_LOGS), orderBy("accepted_at", "desc"));
+                const [appsSnap, bookingsSnap, consentsSnap] = await Promise.all([getDocs(appsQ), getDocs(bookingsQ), getDocs(consentsQ)]);
                 setApps(appsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
                 setBookings(bookingsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+                setConsents(consentsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
             } catch (e) {
                 toast.error("Could not load dashboard data: " + (e?.message || ""));
             } finally {
@@ -402,6 +411,15 @@ function Dashboard({ onLogout }) {
                 </>
             )}
 
+            {tab === "consent" && (
+                <div className="gsa-container mt-10">
+                    <div className="surface-card overflow-hidden">
+                        <div className="p-4 border-b border-border"><div className="font-bold text-secondary">Consent audit trail</div><p className="text-xs text-muted-foreground mt-1">Accepted policy versions and timestamps for submitted assessments.</p></div>
+                        {loading ? <div className="p-6 text-muted-foreground">Loading…</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-muted text-left text-xs uppercase tracking-wider text-muted-foreground"><th className="px-4 py-3">Applicant</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Policy versions</th><th className="px-4 py-3">Accepted</th><th className="px-4 py-3">IP (if available)</th></tr></thead><tbody className="divide-y divide-border">{consents.length === 0 ? <tr><td className="px-4 py-6 text-muted-foreground" colSpan={6}>No consent records found.</td></tr> : consents.map((record) => <tr key={record.id}><td className="px-4 py-3 text-secondary">{record.applicant_name || "—"}</td><td className="px-4 py-3 text-muted-foreground">{record.email || "—"}</td><td className="px-4 py-3 text-secondary">{record.consent_status || "—"}</td><td className="px-4 py-3 text-secondary">Privacy {record.privacy_policy_version || "—"}<br />Terms {record.terms_version || "—"}</td><td className="px-4 py-3 text-secondary">{formatDate(record.accepted_at)}<br />{formatTime(record.accepted_at)}</td><td className="px-4 py-3 text-muted-foreground">{record.ip_address || "Not available"}</td></tr>)}</tbody></table></div>}
+                    </div>
+                </div>
+            )}
+
             <Footer />
         </div>
     );
@@ -414,9 +432,23 @@ export default function AdminClient() {
 
     useEffect(() => {
         if (!isFirebaseConfigured) { setChecking(false); return; }
-        const unsub = onAuthStateChanged(auth, (user) => {
-            setAuthed(!!user);
-            setChecking(false);
+        const unsub = onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                setAuthed(false);
+                setChecking(false);
+                return;
+            }
+            try {
+                const token = await getIdTokenResult(user);
+                const isAdmin = token.claims.admin === true;
+                setAuthed(isAdmin);
+                if (!isAdmin) toast.error("This account is not authorised for admin access.");
+            } catch {
+                setAuthed(false);
+                toast.error("Could not verify admin access.");
+            } finally {
+                setChecking(false);
+            }
         });
         return () => unsub();
     }, []);
