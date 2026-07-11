@@ -8,23 +8,29 @@ import {
     onAuthStateChanged, signInWithEmailAndPassword, signOut,
 } from "firebase/auth";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
+import Footer from "@/components/Footer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { auth, db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
 import { downloadVisaReportPdf } from "@/lib/pdf";
 
-const BREAKDOWN_KEYS = ["academic", "work", "english", "financial", "visa_history", "personal"];
+const BREAKDOWN_KEYS = ["academic", "english", "work", "financial", "visa_history", "intent", "family"];
 const FORM_KEYS = [
-    "full_name", "email", "phone", "age", "nationality",
-    "highest_qualification", "field_of_study", "grade_percentage",
-    "year_of_completion", "gap_years",
-    "work_experience_years", "work_relevant_to_course", "current_job_title",
-    "english_test", "english_score", "english_no_band_below",
+    "full_name", "email", "phone", "dob", "age", "nationality", "target_country",
     "intended_course", "intended_university", "intake_year",
-    "sponsor_relationship", "annual_family_income_inr", "income_proof_available",
-    "liquid_funds_inr", "loan_sanctioned_inr", "property_assets_inr",
-    "previous_visa_refusal", "refusal_country", "refusal_reason", "prior_australia_visa",
+    "highest_qualification", "field_of_study", "highest_qual_percentage",
+    "year_of_completion", "gap_years", "total_backlogs", "backlogs_cleared", "backlog_certificate_submitted",
+    "english_test", "listening", "reading", "writing", "speaking", "overall_score", "exam_attempts",
+    "marital_status", "has_child", "spouse_accompanying", "spouse_qualification", "spouse_activity",
+    "work1_status", "work1_employer", "work1_years", "work1_itr_filed", "work1_salary_mode",
+    "work2_status", "work2_employer", "work2_years", "work2_itr_filed", "work2_salary_mode",
+    "work_relevant_to_course", "work_verification_done",
+    "course_in_line_with_education", "applied_visa_before",
+    "previous_visa_refusal", "refusal_country", "refusal_reason",
+    "education_loan_required", "loan_type", "loan_amount_inr", "loan_sanctioned",
     "character_declaration", "health_declaration",
+    "sponsor_relationship", "sponsor_annual_income_inr", "income_proof_available",
+    "savings_amount_inr", "fixed_deposits_inr", "investments_inr", "other_funds_inr",
 ];
 
 function csvEscape(value) {
@@ -118,7 +124,7 @@ function LoginForm({ onLoggedIn }) {
     };
 
     return (
-        <div className="gsa-container max-w-md mx-auto h-screen overflow-hidden flex flex-col justify-center" data-testid="admin-login">
+        <div className="gsa-container py-24 max-w-md mx-auto" data-testid="admin-login">
             <h1 className="gsa-h2 mb-2">Counselor Login</h1>
             <p className="gsa-body text-sm mb-8">Internal access to the leads dashboard.</p>
             <form onSubmit={submit} className="surface-card p-8 space-y-4">
@@ -231,8 +237,8 @@ function Dashboard({ onLogout }) {
     };
 
     return (
-        <div data-testid="admin-dashboard" className="h-screen overflow-hidden flex flex-col bg-background">
-            <div className="gsa-container pt-6 pb-4 flex items-center justify-between flex-wrap gap-4 flex-shrink-0">
+        <div data-testid="admin-dashboard" className="bg-background">
+            <div className="gsa-container pt-12 pb-6 flex items-center justify-between flex-wrap gap-4">
                 <div>
                     <div className="gsa-overline mb-2">Counselor Dashboard</div>
                     <h1 className="gsa-h2">{tab === "applications" ? "Leads & Applications" : "Counselling Bookings"}</h1>
@@ -252,7 +258,7 @@ function Dashboard({ onLogout }) {
             </div>
 
             {/* Tabs */}
-            <div className="gsa-container flex-shrink-0">
+            <div className="gsa-container">
                 <div className="flex gap-2 border-b border-border" data-testid="admin-tabs">
                     {TABS.map((t) => (
                         <button
@@ -271,21 +277,21 @@ function Dashboard({ onLogout }) {
             </div>
 
             {tab === "applications" && (
-                <div className="flex-1 overflow-hidden flex flex-col">
-                    <div className="gsa-container grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 flex-shrink-0 items-start">
-                        <div className="surface-card p-4"><Users className="text-primary mb-1" size={18} /><div className="text-xs uppercase tracking-widest text-muted-foreground">Total applications</div><div className="font-display font-black text-2xl text-secondary">{apps.length}</div></div>
-                        <div className="surface-card p-4 flex items-center">
+                <>
+                    <div className="gsa-container grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 items-start">
+                        <div className="surface-card p-6"><Users className="text-primary mb-2" size={20} /><div className="text-xs uppercase tracking-widest text-muted-foreground">Total applications</div><div className="font-display font-black text-3xl text-secondary">{apps.length}</div></div>
+                        <div className="surface-card p-6 flex items-center">
                             <DateFilter value={appsDateFilter} onChange={setAppsDateFilter} count={filteredApps.length} label="application(s)" />
                         </div>
                     </div>
 
-                    <div className="gsa-container mt-4 grid lg:grid-cols-5 gap-6 flex-1 overflow-hidden pb-4">
-                        <div className="lg:col-span-3 surface-card overflow-hidden flex flex-col h-full">
-                            <div className="p-4 border-b border-border font-bold text-secondary flex-shrink-0">
+                    <div className="gsa-container mt-10 grid lg:grid-cols-5 gap-6">
+                        <div className="lg:col-span-3 surface-card overflow-hidden">
+                            <div className="p-4 border-b border-border font-bold text-secondary">
                                 {appsDateFilter ? `Applications on ${appsDateFilter}` : "Recent applications"}
                             </div>
                             {loading ? <div className="p-6 text-muted-foreground">Loading…</div> : (
-                                <ul className="divide-y divide-border flex-1 overflow-auto">
+                                <ul className="divide-y divide-border max-h-[600px] overflow-auto">
                                     {filteredApps.length === 0 && <li className="p-6 text-muted-foreground text-sm">No applications found.</li>}
                                     {filteredApps.map((a) => (
                                         <li key={a.id}>
@@ -307,7 +313,7 @@ function Dashboard({ onLogout }) {
                             )}
                         </div>
 
-                        <div className="lg:col-span-2 surface-card p-6 overflow-auto h-full" data-testid="app-detail-panel">
+                        <div className="lg:col-span-2 surface-card p-6 min-h-[400px]" data-testid="app-detail-panel">
                             {!selected ? <p className="text-muted-foreground text-sm">Select an application to view the full report.</p> : (
                                 <div className="space-y-4">
                                     <div>
@@ -321,7 +327,7 @@ function Dashboard({ onLogout }) {
                                         <div><div className="text-xs text-muted-foreground">Tier</div><div className="font-bold text-primary">{selected.tier}</div></div>
                                         <div><div className="text-xs text-muted-foreground">Course</div><div className="text-secondary">{selected.form.intended_course}</div></div>
                                         <div><div className="text-xs text-muted-foreground">English</div><div className="text-secondary">{selected.form.english_test} {selected.form.english_score}</div></div>
-                                        <div><div className="text-xs text-muted-foreground">Funds (INR)</div><div className="text-secondary">{Number(selected.form.liquid_funds_inr).toLocaleString()}</div></div>
+                                        <div><div className="text-xs text-muted-foreground">Savings + FD (INR)</div><div className="text-secondary">{(Number(selected.form.savings_amount_inr || 0) + Number(selected.form.fixed_deposits_inr || 0)).toLocaleString()}</div></div>
                                         <div><div className="text-xs text-muted-foreground">Prior refusal</div><div className="text-secondary">{selected.form.previous_visa_refusal ? "Yes" : "No"}</div></div>
                                         <div className="col-span-2 pt-1">
                                             <button onClick={() => downloadVisaReportPdf(selected)} className="text-primary text-sm font-bold inline-flex items-center gap-1.5" data-testid="admin-pdf-link">
@@ -339,25 +345,25 @@ function Dashboard({ onLogout }) {
                             )}
                         </div>
                     </div>
-                </div>
+                </>
             )}
 
             {tab === "counselling" && (
-                <div className="flex-1 overflow-hidden flex flex-col">
-                    <div className="gsa-container grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 flex-shrink-0 items-start">
-                        <div className="surface-card p-4"><CalendarCheck className="text-primary mb-1" size={18} /><div className="text-xs uppercase tracking-widest text-muted-foreground">Total bookings</div><div className="font-display font-black text-2xl text-secondary">{bookings.length}</div></div>
-                        <div className="surface-card p-4 flex items-center">
+                <>
+                    <div className="gsa-container grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 items-start">
+                        <div className="surface-card p-6"><CalendarCheck className="text-primary mb-2" size={20} /><div className="text-xs uppercase tracking-widest text-muted-foreground">Total bookings</div><div className="font-display font-black text-3xl text-secondary">{bookings.length}</div></div>
+                        <div className="surface-card p-6 flex items-center">
                             <DateFilter value={bookingsDateFilter} onChange={setBookingsDateFilter} count={filteredBookings.length} label="booking(s)" />
                         </div>
                     </div>
 
-                    <div className="gsa-container mt-4 flex-1 overflow-hidden pb-4">
-                        <div className="surface-card overflow-hidden flex flex-col h-full">
-                            <div className="p-4 border-b border-border font-bold text-secondary flex-shrink-0">
+                    <div className="gsa-container mt-10">
+                        <div className="surface-card overflow-hidden">
+                            <div className="p-4 border-b border-border font-bold text-secondary">
                                 {bookingsDateFilter ? `Bookings on ${bookingsDateFilter}` : "Counselling bookings"}
                             </div>
                             {loading ? <div className="p-6 text-muted-foreground">Loading…</div> : (
-                                <div className="overflow-auto flex-1">
+                                <div className="overflow-x-auto">
                                     <table className="w-full text-sm" data-testid="bookings-table">
                                         <thead>
                                             <tr className="bg-muted text-left text-xs uppercase tracking-wider text-muted-foreground">
@@ -393,8 +399,10 @@ function Dashboard({ onLogout }) {
                             )}
                         </div>
                     </div>
-                </div>
+                </>
             )}
+
+            <Footer />
         </div>
     );
 }

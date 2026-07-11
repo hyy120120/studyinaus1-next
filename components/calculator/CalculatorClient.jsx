@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowRight, Loader2, CheckCircle2 } from "lucide-react";
@@ -9,55 +9,140 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import Footer from "@/components/Footer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import { computeScore } from "@/lib/scoring";
+import { computeScore, EDUCATION_LEVELS, SPONSOR_SLOTS } from "@/lib/scoring";
+import { calculateEmi } from "@/lib/emi";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
 import { validateCalculatorStep, validateCalculatorForm } from "@/lib/validation";
 
 const STEPS = [
-    "Personal",
-    "Academic",
-    "Work",
-    "English",
-    "Income & Proof",
-    "Financials",
-    "Visa History",
+    "Personal Details",
+    "Academic Details",
+    "English Language Test",
+    "Marital Details",
+    "Work Details",
+    "Additional Details",
+    "Sponsor Income",
+    "Sponsor Proof",
+    "Financial Details",
+    "Review & Submit",
 ];
 
+const CURRENT_YEAR = new Date().getFullYear();
+const EMPLOYMENT_STATUSES = ["Employed", "Self-employed", "Not Applicable", "Unemployed", "Student"];
+const SALARY_MODES = ["Bank Transfer", "Cash", "Cheque"];
+const SPONSOR_RELATIONS = ["Father", "Mother", "Self", "Spouse", "Sibling", "Grandparent", "Uncle/Aunt", "Other"];
+const SPONSOR_OCCUPATIONS = ["Salaried", "Business", "Agriculture", "Retired", "Other"];
+
 const INITIAL = {
-    full_name: "",
+    // Personal
+    first_name: "",
+    last_name: "",
     email: "",
     phone: "",
-    age: 22,
+    dob: "",
+    age: 0,
     nationality: "Indian",
-    highest_qualification: "Bachelors",
-    field_of_study: "",
-    grade_percentage: 70,
-    year_of_completion: new Date().getFullYear() - 1,
-    gap_years: 0,
-    work_experience_years: 0,
-    work_relevant_to_course: false,
-    current_job_title: "",
-    english_test: "IELTS",
-    english_score: 6.5,
-    english_no_band_below: 6.0,
     intended_course: "",
     intended_university: "",
-    intake_year: new Date().getFullYear() + 1,
-    sponsor_relationship: "Parents",
-    annual_family_income_inr: 1000000,
-    income_proof_available: true,
-    liquid_funds_inr: 2500000,
-    loan_sanctioned_inr: 2000000,
-    property_assets_inr: 0,
+    intake_year: CURRENT_YEAR + 1,
+
+    // Academic
+    education: EDUCATION_LEVELS.map((l) => ({
+        key: l.key,
+        label: l.label,
+        applicable: false,
+        stream: "",
+        marks_obtained: "",
+        marks_total: "",
+        start_year: "",
+        end_year: "",
+        has_backlogs: false,
+        backlog_count: "",
+        backlogs_cleared: true,
+    })),
+
+    // English
+    english_test: "IELTS",
+    exam_date: "",
+    tentative_exam_date: "",
+    listening: 6.5,
+    reading: 6.5,
+    writing: 6.5,
+    speaking: 6.5,
+    overall_score: 6.5,
+    exam_attempts: 1,
+
+    // Sponsors & income proof
+    sponsors: SPONSOR_SLOTS.map((s) => ({
+        id: s.id,
+        relation: s.relation,
+        applicable: s.defaultApplicable,
+        employment_type: "",
+        other_occupation: "",
+        itr_timely: false,
+        itr_3yr: false,
+        annual_income_inr: 0,
+        docs: [],
+    })),
+
+    // Work
+    work1_status: "Not Applicable",
+    work1_employer: "",
+    work1_date_of_joining: "",
+    work1_last_working_day: "",
+    work1_currently_working: true,
+    work1_itr_filed: false,
+    work1_salary_mode: "Bank Transfer",
+    work2_status: "",
+    work2_employer: "",
+    work2_date_of_joining: "",
+    work2_last_working_day: "",
+    work2_currently_working: true,
+    work2_itr_filed: false,
+    work2_salary_mode: "Bank Transfer",
+    has_second_employment: false,
+    work_relevant_to_course: false,
+    work_verification_done: false,
+
+    // Visa & loan
+    course_in_line_with_previous_education: true,
+    applied_visa_before: "None",
     previous_visa_refusal: false,
     refusal_country: "",
     refusal_reason: "",
-    prior_australia_visa: false,
+    education_loan_required: false,
+    loan_type: "",
+    lender_bank_name: "",
+    loan_amount_inr: "",
+    annual_interest_rate: "",
+    loan_tenure_years: "",
     character_declaration: false,
     health_declaration: false,
+    savings_available: false,
+    savings_amount_inr: "",
+    fixed_deposits_available: false,
+    fixed_deposits_amount_inr: "",
+    investments_available: false,
+    investments_amount_inr: "",
+    other_funds_available: false,
+    other_funds_amount_inr: "",
+    mist_account_holder_name: "",
+    mist_account_holder_relation: "",
+    mist_fund_source: "",
+    mist_amount_inr: "",
+    mist_transfer_timeline: "",
+
+    // Marital
+    is_married: false,
+    has_child: false,
+    child_count: "",
+    spouse_will_accompany: false,
+    spouse_qualification: "",
+    spouse_activity: "",
 };
 
 function Field({ label, children, hint, error, testId }) {
@@ -71,6 +156,26 @@ function Field({ label, children, hint, error, testId }) {
     );
 }
 
+function YesNo({ value, onChange, testId, yesLabel = "Yes", noLabel = "No" }) {
+    return (
+        <RadioGroup value={String(value)} onValueChange={(v) => onChange(v === "true")} className="flex gap-6">
+            <div className="flex items-center gap-2"><RadioGroupItem value="true" id={`${testId}-yes`} data-testid={`${testId}-yes`} /><Label htmlFor={`${testId}-yes`}>{yesLabel}</Label></div>
+            <div className="flex items-center gap-2"><RadioGroupItem value="false" id={`${testId}-no`} data-testid={`${testId}-no`} /><Label htmlFor={`${testId}-no`}>{noLabel}</Label></div>
+        </RadioGroup>
+    );
+}
+
+function calcAge(dobStr) {
+    if (!dobStr) return 0;
+    const dob = new Date(dobStr);
+    if (isNaN(dob)) return 0;
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    return age;
+}
+
 export default function CalculatorClient() {
     const router = useRouter();
     const [step, setStep] = useState(0);
@@ -79,7 +184,43 @@ export default function CalculatorClient() {
     const [submitting, setSubmitting] = useState(false);
 
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+    const updateEducation = (key, field, value) => {
+        setForm((f) => ({
+            ...f,
+            education: f.education.map((l) => (l.key === key ? { ...l, [field]: value } : l)),
+        }));
+    };
+
+    const updateSponsor = (id, field, value) => {
+        setForm((f) => ({
+            ...f,
+            sponsors: f.sponsors.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
+        }));
+    };
+
+    const toggleSponsorDoc = (id, docKey) => {
+        setForm((f) => ({
+            ...f,
+            sponsors: f.sponsors.map((s) => {
+                if (s.id !== id) return s;
+                const has = s.docs.includes(docKey);
+                return { ...s, docs: has ? s.docs.filter((d) => d !== docKey) : [...s.docs, docKey] };
+            }),
+        }));
+    };
+
+    useEffect(() => {
+        if (form.dob) set("age", calcAge(form.dob));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [form.dob]);
+
     const progress = useMemo(() => ((step + 1) / STEPS.length) * 100, [step]);
+
+    const emi = useMemo(
+        () => calculateEmi(form.loan_amount_inr, form.annual_interest_rate, form.loan_tenure_years),
+        [form.loan_amount_inr, form.annual_interest_rate, form.loan_tenure_years]
+    );
 
     const goNext = () => {
         const stepErrors = validateCalculatorStep(step, form);
@@ -101,9 +242,10 @@ export default function CalculatorClient() {
         }
         setSubmitting(true);
         try {
-            const scoring = computeScore(form);
+            const formForScoring = { ...form, full_name: `${form.first_name} ${form.last_name}`.trim() };
+            const scoring = computeScore(formForScoring);
             const created_at = new Date().toISOString();
-            const result = { form, ...scoring, created_at };
+            const result = { form: formForScoring, ...scoring, created_at };
 
             let id;
             if (isFirebaseConfigured) {
@@ -137,17 +279,13 @@ export default function CalculatorClient() {
                     {step === 0 && (
                         <div className="mt-6 text-sm leading-relaxed text-muted-foreground border-l-2 border-primary/40 pl-4">
                             <p className="mb-3">
-                                This is a 4-minute readiness check for the Australian Subclass 500 (Student) visa.
-                                We score your profile across six dimensions — academics, work experience, English
-                                proficiency, financial capacity, visa history, and personal factors including age
-                                and course intent.
+                                This is a detailed profile-readiness check, built on the same intake questions our
+                                counsellors use internally — personal details, academics & backlogs, English,
+                                sponsor income & documentation, work history, visa/loan details, and marital status.
                             </p>
                             <p>
-                                Note: the DHA's current 12-month living-cost benchmark for a primary applicant is
-                                AUD 29,710 (effective 10 May 2024) — plus tuition and travel. Nothing here is a
-                                guarantee — only the DHA can grant a visa — but a high score strongly correlates
-                                with applicants who go on to lodge successful applications. A low score is equally
-                                useful: it tells you exactly where to invest effort before lodging.
+                                Nothing here is a guarantee — only the relevant immigration authority can grant a
+                                visa — but this score tells you exactly where to invest effort before applying.
                             </p>
                         </div>
                     )}
@@ -169,19 +307,23 @@ export default function CalculatorClient() {
                             transition={{ duration: 0.28, ease: "easeInOut" }}
                             className="bg-white p-8 md:p-12 rounded-2xl border border-border shadow-sm"
                         >
+                            {/* STEP 0 — PERSONAL */}
                             {step === 0 && (
                                 <div className="grid md:grid-cols-2 gap-6">
-                                    <Field label="Full name" error={errors.full_name} testId="field-full_name">
-                                        <Input data-testid="input-full_name" value={form.full_name} onChange={(e) => set("full_name", e.target.value)} placeholder="Riya Patel" />
+                                    <Field label="First name" error={errors.first_name} testId="field-first_name">
+                                        <Input data-testid="input-first_name" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} placeholder="Riya" />
                                     </Field>
-                                    <Field label="Email" error={errors.email} testId="field-email">
+                                    <Field label="Last name" error={errors.last_name} testId="field-last_name">
+                                        <Input data-testid="input-last_name" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} placeholder="Patel" />
+                                    </Field>
+                                    <Field label="Email address" error={errors.email} testId="field-email">
                                         <Input data-testid="input-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="you@example.com" />
                                     </Field>
-                                    <Field label="Phone" error={errors.phone} testId="field-phone">
+                                    <Field label="Contact number" error={errors.phone} testId="field-phone">
                                         <Input data-testid="input-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98XXXXXXXX" />
                                     </Field>
-                                    <Field label="Age" error={errors.age} testId="field-age">
-                                        <Input data-testid="input-age" type="number" value={form.age} onChange={(e) => set("age", +e.target.value)} />
+                                    <Field label="Date of birth" hint={form.dob ? `Age: ${form.age}` : undefined} error={errors.dob} testId="field-dob">
+                                        <Input data-testid="input-dob" type="date" value={form.dob} onChange={(e) => set("dob", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
                                     </Field>
                                     <Field label="Nationality" error={errors.nationality} testId="field-nationality">
                                         <Input data-testid="input-nationality" value={form.nationality} onChange={(e) => set("nationality", e.target.value)} />
@@ -189,163 +331,476 @@ export default function CalculatorClient() {
                                     <Field label="Intended intake year" error={errors.intake_year} testId="field-intake_year">
                                         <Input data-testid="input-intake_year" type="number" value={form.intake_year} onChange={(e) => set("intake_year", +e.target.value)} />
                                     </Field>
-                                    <div className="md:col-span-2 grid md:grid-cols-2 gap-6">
+                                    <Field label="Intended university (optional)" testId="field-intended_university">
+                                        <Input data-testid="input-intended_university" value={form.intended_university} onChange={(e) => set("intended_university", e.target.value)} placeholder="UNSW Sydney" />
+                                    </Field>
+                                    <div className="md:col-span-2">
                                         <Field label="Intended course" error={errors.intended_course} testId="field-intended_course">
                                             <Input data-testid="input-intended_course" value={form.intended_course} onChange={(e) => set("intended_course", e.target.value)} placeholder="Master of Data Science" />
                                         </Field>
-                                        <Field label="Intended university (optional)" testId="field-intended_university">
-                                            <Input data-testid="input-intended_university" value={form.intended_university} onChange={(e) => set("intended_university", e.target.value)} placeholder="UNSW Sydney" />
-                                        </Field>
                                     </div>
                                 </div>
                             )}
 
+                            {/* STEP 1 — ACADEMIC (Marks, Grading & Backlogs) */}
                             {step === 1 && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <Field label="Highest qualification" error={errors.highest_qualification} testId="field-highest_qualification">
-                                        <Select value={form.highest_qualification} onValueChange={(v) => set("highest_qualification", v)}>
-                                            <SelectTrigger data-testid="select-highest_qualification"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {["High School", "Diploma", "Bachelors", "Masters", "PhD"].map((q) => (
-                                                    <SelectItem key={q} value={q}>{q}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </Field>
-                                    <Field label="Field of study" error={errors.field_of_study} testId="field-field_of_study">
-                                        <Input data-testid="input-field_of_study" value={form.field_of_study} onChange={(e) => set("field_of_study", e.target.value)} placeholder="Computer Science" />
-                                    </Field>
-                                    <Field label="Grade / Percentage" hint="Enter overall % (CGPA × 9.5 for 10-scale)" error={errors.grade_percentage} testId="field-grade_percentage">
-                                        <Input data-testid="input-grade_percentage" type="number" step="0.1" value={form.grade_percentage} onChange={(e) => set("grade_percentage", +e.target.value)} />
-                                    </Field>
-                                    <Field label="Year of completion" error={errors.year_of_completion} testId="field-year_of_completion">
-                                        <Input data-testid="input-year_of_completion" type="number" value={form.year_of_completion} onChange={(e) => set("year_of_completion", +e.target.value)} />
-                                    </Field>
-                                    <Field label="Gap years since last study" error={errors.gap_years} testId="field-gap_years">
-                                        <Input data-testid="input-gap_years" type="number" value={form.gap_years} onChange={(e) => set("gap_years", +e.target.value)} />
-                                    </Field>
+                                <div className="space-y-6">
+                                    {errors.education && <p className="text-xs text-destructive">{errors.education}</p>}
+                                    {form.education.map((lvl) => (
+                                        <div key={lvl.key} className="border border-border rounded-xl p-5" data-testid={`edu-card-${lvl.key}`}>
+                                            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                                <Checkbox checked={lvl.applicable} onCheckedChange={(v) => updateEducation(lvl.key, "applicable", !!v)} data-testid={`edu-toggle-${lvl.key}`} />
+                                                <span className="font-display font-bold text-secondary">{lvl.label}</span>
+                                            </label>
+                                            {lvl.applicable && (
+                                                <div className="grid md:grid-cols-3 gap-4">
+                                                    <Field label="Stream / Course" testId={`field-edu_stream_${lvl.key}`}>
+                                                        <Input value={lvl.stream} onChange={(e) => updateEducation(lvl.key, "stream", e.target.value)} placeholder="e.g. Science, Commerce" data-testid={`input-edu_stream_${lvl.key}`} />
+                                                    </Field>
+                                                    <Field label="Marks obtained" error={errors[`edu_${lvl.key}`]} testId={`field-edu_marks_${lvl.key}`}>
+                                                        <Input type="number" value={lvl.marks_obtained} onChange={(e) => updateEducation(lvl.key, "marks_obtained", e.target.value)} data-testid={`input-edu_marks_obtained_${lvl.key}`} />
+                                                    </Field>
+                                                    <Field label="Total marks" testId={`field-edu_total_${lvl.key}`}>
+                                                        <Input type="number" value={lvl.marks_total} onChange={(e) => updateEducation(lvl.key, "marks_total", e.target.value)} placeholder="e.g. 100" data-testid={`input-edu_marks_total_${lvl.key}`} />
+                                                    </Field>
+                                                    <Field label="Start year" testId={`field-edu_start_${lvl.key}`}>
+                                                        <Input type="number" value={lvl.start_year} onChange={(e) => updateEducation(lvl.key, "start_year", e.target.value)} data-testid={`input-edu_start_${lvl.key}`} />
+                                                    </Field>
+                                                    <Field label="End year" testId={`field-edu_end_${lvl.key}`}>
+                                                        <Input type="number" value={lvl.end_year} onChange={(e) => updateEducation(lvl.key, "end_year", e.target.value)} data-testid={`input-edu_end_${lvl.key}`} />
+                                                    </Field>
+                                                    <Field label="Backlogs?" testId={`field-edu_bl_${lvl.key}`}>
+                                                        <YesNo value={lvl.has_backlogs} onChange={(v) => updateEducation(lvl.key, "has_backlogs", v)} testId={`radio-edu_bl_${lvl.key}`} />
+                                                    </Field>
+                                                    {lvl.has_backlogs && (
+                                                        <>
+                                                            <Field label="No. of backlogs" error={errors[`edu_${lvl.key}_bl`]} testId={`field-edu_blcount_${lvl.key}`}>
+                                                                <Input type="number" value={lvl.backlog_count} onChange={(e) => updateEducation(lvl.key, "backlog_count", e.target.value)} data-testid={`input-edu_blcount_${lvl.key}`} />
+                                                            </Field>
+                                                            <Field label="Cleared?" testId={`field-edu_blcleared_${lvl.key}`}>
+                                                                <YesNo value={lvl.backlogs_cleared} onChange={(v) => updateEducation(lvl.key, "backlogs_cleared", v)} testId={`radio-edu_blcleared_${lvl.key}`} />
+                                                            </Field>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             )}
 
+                            {/* STEP 2 — ENGLISH */}
                             {step === 2 && (
                                 <div className="grid md:grid-cols-2 gap-6">
-                                    <Field label="Years of work experience" error={errors.work_experience_years} testId="field-work_experience_years">
-                                        <Input data-testid="input-work_experience_years" type="number" step="0.5" value={form.work_experience_years} onChange={(e) => set("work_experience_years", +e.target.value)} />
-                                    </Field>
-                                    <Field label="Current job title (optional)" error={errors.current_job_title} testId="field-current_job_title">
-                                        <Input data-testid="input-current_job_title" value={form.current_job_title} onChange={(e) => set("current_job_title", e.target.value)} placeholder="Software Engineer" />
-                                    </Field>
-                                    <div className="md:col-span-2">
-                                        <Field label="Is your work relevant to the intended course?" testId="field-work_relevant_to_course">
-                                            <RadioGroup value={String(form.work_relevant_to_course)} onValueChange={(v) => set("work_relevant_to_course", v === "true")} className="flex gap-6">
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="true" id="wr-yes" data-testid="radio-work_relevant-yes" /><Label htmlFor="wr-yes">Yes</Label></div>
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="false" id="wr-no" data-testid="radio-work_relevant-no" /><Label htmlFor="wr-no">No</Label></div>
-                                            </RadioGroup>
-                                        </Field>
-                                    </div>
-                                </div>
-                            )}
-
-                            {step === 3 && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <Field label="English test taken" error={errors.english_test} testId="field-english_test">
-                                        <Select value={form.english_test} onValueChange={(v) => set("english_test", v)}>
+                                    <Field label="Exam name" error={errors.english_test} testId="field-english_test">
+                                        <Select value={form.english_test} onValueChange={(v) => {
+                                            const defaultScore = v === "PTE" ? 50 : v === "TOEFL" ? 60 : v === "Duolingo" ? 95 : v === "IELTS" ? 6.5 : 0;
+                                            setForm((f) => ({ ...f, english_test: v, listening: defaultScore, reading: defaultScore, writing: defaultScore, speaking: defaultScore, overall_score: defaultScore }));
+                                        }}>
                                             <SelectTrigger data-testid="select-english_test"><SelectValue /></SelectTrigger>
                                             <SelectContent>
-                                                {["IELTS", "PTE", "TOEFL", "Duolingo", "None"].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                                {["IELTS", "PTE", "TOEFL", "Duolingo", "Not Yet Taken"].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
                                     </Field>
-                                    <Field label="Overall score / band" error={errors.english_score} testId="field-english_score">
-                                        <Input data-testid="input-english_score" type="number" step="0.1" value={form.english_score} onChange={(e) => set("english_score", +e.target.value)} />
-                                    </Field>
-                                    <Field label="No band below (IELTS only)" testId="field-english_no_band_below">
-                                        <Input data-testid="input-english_no_band_below" type="number" step="0.1" value={form.english_no_band_below || 0} onChange={(e) => set("english_no_band_below", +e.target.value)} />
-                                    </Field>
-                                </div>
-                            )}
-
-                            {step === 4 && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <Field label="Who is sponsoring you?" error={errors.sponsor_relationship} testId="field-sponsor_relationship">
-                                        <Select value={form.sponsor_relationship} onValueChange={(v) => set("sponsor_relationship", v)}>
-                                            <SelectTrigger data-testid="select-sponsor_relationship"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {["Self", "Parents", "Spouse", "Sibling", "Other"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                    </Field>
-                                    <Field label="Annual family income (INR)" error={errors.annual_family_income_inr} testId="field-annual_family_income_inr">
-                                        <Input data-testid="input-annual_family_income_inr" type="number" value={form.annual_family_income_inr} onChange={(e) => set("annual_family_income_inr", +e.target.value)} />
-                                    </Field>
-                                    <div className="md:col-span-2">
-                                        <Field label="Do you have income proof (3 yrs ITR / Form 16 / salary slips)?" testId="field-income_proof_available">
-                                            <RadioGroup value={String(form.income_proof_available)} onValueChange={(v) => set("income_proof_available", v === "true")} className="flex gap-6">
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="true" id="ip-y" data-testid="radio-income_proof-yes" /><Label htmlFor="ip-y">Yes</Label></div>
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="false" id="ip-n" data-testid="radio-income_proof-no" /><Label htmlFor="ip-n">No</Label></div>
-                                            </RadioGroup>
-                                        </Field>
-                                    </div>
-                                </div>
-                            )}
-
-                            {step === 5 && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <Field label="Liquid funds in bank/FDs (INR)" error={errors.liquid_funds_inr} testId="field-liquid_funds_inr">
-                                        <Input data-testid="input-liquid_funds_inr" type="number" value={form.liquid_funds_inr} onChange={(e) => set("liquid_funds_inr", +e.target.value)} />
-                                    </Field>
-                                    <Field label="Education loan sanctioned (INR)" error={errors.loan_sanctioned_inr} testId="field-loan_sanctioned_inr">
-                                        <Input data-testid="input-loan_sanctioned_inr" type="number" value={form.loan_sanctioned_inr} onChange={(e) => set("loan_sanctioned_inr", +e.target.value)} />
-                                    </Field>
-                                    <Field label="Property / other assets (INR)" hint="DHA discounts immovable assets — counted at 40% weight." error={errors.property_assets_inr} testId="field-property_assets_inr">
-                                        <Input data-testid="input-property_assets_inr" type="number" value={form.property_assets_inr} onChange={(e) => set("property_assets_inr", +e.target.value)} />
-                                    </Field>
-                                </div>
-                            )}
-
-                            {step === 6 && (
-                                <div className="grid md:grid-cols-2 gap-6">
-                                    <div className="md:col-span-2">
-                                        <Field label="Have you ever been refused a visa (any country)?" testId="field-previous_visa_refusal">
-                                            <RadioGroup value={String(form.previous_visa_refusal)} onValueChange={(v) => set("previous_visa_refusal", v === "true")} className="flex gap-6">
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="true" id="vr-y" data-testid="radio-prev_refusal-yes" /><Label htmlFor="vr-y">Yes</Label></div>
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="false" id="vr-n" data-testid="radio-prev_refusal-no" /><Label htmlFor="vr-n">No</Label></div>
-                                            </RadioGroup>
-                                        </Field>
-                                    </div>
-                                    {form.previous_visa_refusal && (
+                                    {form.english_test !== "Not Yet Taken" && (
                                         <>
-                                            <Field label="Country of refusal" error={errors.refusal_country} testId="field-refusal_country">
-                                                <Input data-testid="input-refusal_country" value={form.refusal_country} onChange={(e) => set("refusal_country", e.target.value)} />
+                                            <Field label="Number of attempts" error={errors.exam_attempts} testId="field-exam_attempts">
+                                                <Input data-testid="input-exam_attempts" type="number" min="1" value={form.exam_attempts} onChange={(e) => set("exam_attempts", +e.target.value)} />
                                             </Field>
-                                            <Field label="Stated reason for refusal" error={errors.refusal_reason} testId="field-refusal_reason">
-                                                <Textarea data-testid="input-refusal_reason" value={form.refusal_reason} onChange={(e) => set("refusal_reason", e.target.value)} placeholder="e.g. GTE concerns, insufficient funds" />
+                                            <Field label="Exam date (if taken)" testId="field-exam_date">
+                                                <Input data-testid="input-exam_date" type="date" value={form.exam_date} onChange={(e) => set("exam_date", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                                            </Field>
+                                            <Field label="Tentative exam date (if not yet taken)" testId="field-tentative_exam_date">
+                                                <Input data-testid="input-tentative_exam_date" type="date" value={form.tentative_exam_date} onChange={(e) => set("tentative_exam_date", e.target.value)} />
+                                            </Field>
+                                            <Field label={`Listening (${form.english_test === "IELTS" ? "0–9 bands" : form.english_test === "PTE" ? "10–90" : form.english_test === "TOEFL" ? "0–30" : "10–160"})`} testId="field-listening">
+                                                <Input data-testid="input-listening" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.listening} onChange={(e) => set("listening", +e.target.value)} />
+                                            </Field>
+                                            <Field label="Reading" testId="field-reading">
+                                                <Input data-testid="input-reading" type="number" step="0.5" value={form.reading} onChange={(e) => set("reading", +e.target.value)} />
+                                            </Field>
+                                            <Field label="Writing" testId="field-writing">
+                                                <Input data-testid="input-writing" type="number" step="0.5" value={form.writing} onChange={(e) => set("writing", +e.target.value)} />
+                                            </Field>
+                                            <Field label="Speaking" testId="field-speaking">
+                                                <Input data-testid="input-speaking" type="number" step="0.5" value={form.speaking} onChange={(e) => set("speaking", +e.target.value)} />
+                                            </Field>
+                                            <Field label={`${form.english_test} overall score`} error={errors.overall_score} testId="field-overall_score">
+                                                <Input data-testid="input-overall_score" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.overall_score} onChange={(e) => set("overall_score", +e.target.value)} />
                                             </Field>
                                         </>
                                     )}
-                                    <div className="md:col-span-2">
-                                        <Field label="Have you ever held an Australian visa before?" testId="field-prior_australia_visa">
-                                            <RadioGroup value={String(form.prior_australia_visa)} onValueChange={(v) => set("prior_australia_visa", v === "true")} className="flex gap-6">
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="true" id="pa-y" data-testid="radio-prior_au-yes" /><Label htmlFor="pa-y">Yes</Label></div>
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="false" id="pa-n" data-testid="radio-prior_au-no" /><Label htmlFor="pa-n">No</Label></div>
-                                            </RadioGroup>
+                                </div>
+                            )}
+
+                            {/* STEP 3 — SPONSORS & INCOME PROOF */}
+                            {(step === 6 || step === 7) && (
+                                <div className="space-y-6">
+                                    {errors.sponsors && <p className="text-xs text-destructive">{errors.sponsors}</p>}
+                                    {form.sponsors.map((sp) => (
+                                        <div key={sp.id} className="border border-border rounded-xl p-5" data-testid={`sponsor-card-${sp.id}`}>
+                                            <label className="flex items-center gap-2 mb-4 cursor-pointer">
+                                                <Checkbox checked={sp.applicable} onCheckedChange={(v) => updateSponsor(sp.id, "applicable", !!v)} data-testid={`sponsor-toggle-${sp.id}`} />
+                                                <span className="font-display font-bold text-secondary">Include this sponsor</span>
+                                            </label>
+                                            {sp.applicable && (
+                                                <>
+                                                    <div className="grid md:grid-cols-3 gap-4 mb-4">
+                                                        <Field label="Sponsor relation" error={errors[`sponsor_relation_${sp.id}`]}>
+                                                            <Select value={sp.relation} onValueChange={(v) => updateSponsor(sp.id, "relation", v)}>
+                                                                <SelectTrigger><SelectValue placeholder="Select relation" /></SelectTrigger>
+                                                                <SelectContent>{SPONSOR_RELATIONS.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent>
+                                                            </Select>
+                                                        </Field>
+                                                        <Field label="Employment type" testId={`field-sponsor_emp_${sp.id}`}>
+                                                            <Select value={sp.employment_type} onValueChange={(v) => updateSponsor(sp.id, "employment_type", v)}>
+                                                                <SelectTrigger data-testid={`select-sponsor_emp_${sp.id}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                                                                <SelectContent>
+                                                                    {SPONSOR_OCCUPATIONS.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </Field>
+                                                        <Field label="Annual income (₹)" error={errors[`sponsor_${sp.id}`]} testId={`field-sponsor_income_${sp.id}`}>
+                                                            <Input type="number" value={sp.annual_income_inr} onChange={(e) => updateSponsor(sp.id, "annual_income_inr", +e.target.value)} data-testid={`input-sponsor_income_${sp.id}`} />
+                                                        </Field>
+                                                        {sp.employment_type === "Other" && <Field label="Specify occupation"><Input value={sp.other_occupation} onChange={(e) => updateSponsor(sp.id, "other_occupation", e.target.value)} /></Field>}
+                                                        <div className="flex flex-col gap-3 pt-6">
+                                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                                <Checkbox checked={sp.itr_timely} onCheckedChange={(v) => updateSponsor(sp.id, "itr_timely", !!v)} data-testid={`sponsor_itr_timely_${sp.id}`} />
+                                                                Filing ITR timely?
+                                                            </label>
+                                                            <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                                                <Checkbox checked={sp.itr_3yr} onCheckedChange={(v) => updateSponsor(sp.id, "itr_3yr", !!v)} data-testid={`sponsor_itr_3yr_${sp.id}`} />
+                                                                Last 3 years ITR filed?
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <Label className="text-xs uppercase tracking-widest text-muted-foreground mb-2 block">Income proof documents available (select at least 2)</Label>
+                                                        <div className="grid sm:grid-cols-2 gap-2">
+                                                            {documentsForSponsor(sp).map((doc) => (
+                                                                <label key={doc.key} className="flex items-center gap-2 text-xs cursor-pointer">
+                                                                    <Checkbox checked={sp.docs.includes(doc.key)} onCheckedChange={() => toggleSponsorDoc(sp.id, doc.key)} data-testid={`sponsor_doc_${sp.id}_${doc.key}`} />
+                                                                    {doc.label}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground mt-2">{sp.docs.length} document(s) selected {sp.docs.length >= 2 ? "— proof complete" : ""}</p>
+                                                        {errors[`sponsor_docs_${sp.id}`] && <p className="text-xs text-destructive mt-2">{errors[`sponsor_docs_${sp.id}`]}</p>}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* STEP 4 — WORK DETAILS */}
+                            {step === 4 && (
+                                <div className="space-y-8">
+                                    <div>
+                                        <div className="gsa-overline mb-4">Employment 1</div>
+                                        <div className="grid md:grid-cols-2 gap-6">
+                                            <Field label="Employment status" testId="field-work1_status">
+                                                <Select value={form.work1_status} onValueChange={(v) => set("work1_status", v)}>
+                                                    <SelectTrigger data-testid="select-work1_status"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {EMPLOYMENT_STATUSES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </Field>
+                                            {!["Not Applicable", "Unemployed", "Student"].includes(form.work1_status) && (
+                                                <>
+                                                    <Field label="Employer name" error={errors.work1_employer} testId="field-work1_employer">
+                                                        <Input data-testid="input-work1_employer" value={form.work1_employer} onChange={(e) => set("work1_employer", e.target.value)} />
+                                                    </Field>
+                                                    <Field label="Date of joining" error={errors.work1_date_of_joining} testId="field-work1_date_of_joining">
+                                                        <Input data-testid="input-work1_date_of_joining" type="date" value={form.work1_date_of_joining} onChange={(e) => set("work1_date_of_joining", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                                                    </Field>
+                                                    <Field label="Currently working here?" testId="field-work1_currently_working">
+                                                        <YesNo value={form.work1_currently_working} onChange={(v) => set("work1_currently_working", v)} testId="radio-work1_currently_working" />
+                                                    </Field>
+                                                    {!form.work1_currently_working && (
+                                                        <Field label="Last working day" testId="field-work1_last_working_day">
+                                                            <Input data-testid="input-work1_last_working_day" type="date" value={form.work1_last_working_day} onChange={(e) => set("work1_last_working_day", e.target.value)} />
+                                                        </Field>
+                                                    )}
+                                                    <Field label="Mode of salary" testId="field-work1_salary_mode">
+                                                        <Select value={form.work1_salary_mode} onValueChange={(v) => set("work1_salary_mode", v)}>
+                                                            <SelectTrigger data-testid="select-work1_salary_mode"><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                {SALARY_MODES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </Field>
+                                                    <Field label="ITR / Form 16 filed?" testId="field-work1_itr_filed">
+                                                        <YesNo value={form.work1_itr_filed} onChange={(v) => set("work1_itr_filed", v)} testId="radio-work1_itr_filed" />
+                                                    </Field>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="flex items-center gap-2 text-sm font-medium text-secondary cursor-pointer mb-4">
+                                            <Checkbox checked={form.has_second_employment} onCheckedChange={(v) => set("has_second_employment", !!v)} />
+                                            Add a second employment record
+                                        </label>
+                                        {form.has_second_employment && <>
+                                        <div className="gsa-overline mb-4">Employment 2</div>
+                                        <div className="grid md:grid-cols-2 gap-6">
+                                            <Field label="Employment status" testId="field-work2_status">
+                                                <Select value={form.work2_status} onValueChange={(v) => set("work2_status", v)}>
+                                                    <SelectTrigger data-testid="select-work2_status"><SelectValue placeholder="Not applicable" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {EMPLOYMENT_STATUSES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </Field>
+                                            {form.work2_status && !["Not Applicable", "Unemployed", "Student"].includes(form.work2_status) && (
+                                                <>
+                                                    <Field label="Employer name" error={errors.work2_employer} testId="field-work2_employer">
+                                                        <Input data-testid="input-work2_employer" value={form.work2_employer} onChange={(e) => set("work2_employer", e.target.value)} />
+                                                    </Field>
+                                                    <Field label="Date of joining" error={errors.work2_date_of_joining} testId="field-work2_date_of_joining">
+                                                        <Input data-testid="input-work2_date_of_joining" type="date" value={form.work2_date_of_joining} onChange={(e) => set("work2_date_of_joining", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                                                    </Field>
+                                                    <Field label="Currently working here?" testId="field-work2_currently_working">
+                                                        <YesNo value={form.work2_currently_working} onChange={(v) => set("work2_currently_working", v)} testId="radio-work2_currently_working" />
+                                                    </Field>
+                                                    {!form.work2_currently_working && (
+                                                        <Field label="Last working day" testId="field-work2_last_working_day">
+                                                            <Input data-testid="input-work2_last_working_day" type="date" value={form.work2_last_working_day} onChange={(e) => set("work2_last_working_day", e.target.value)} />
+                                                        </Field>
+                                                    )}
+                                                    <Field label="Mode of salary" testId="field-work2_salary_mode">
+                                                        <Select value={form.work2_salary_mode} onValueChange={(v) => set("work2_salary_mode", v)}>
+                                                            <SelectTrigger data-testid="select-work2_salary_mode"><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                {SALARY_MODES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </Field>
+                                                    <Field label="ITR / Form 16 filed?" testId="field-work2_itr_filed">
+                                                        <YesNo value={form.work2_itr_filed} onChange={(v) => set("work2_itr_filed", v)} testId="radio-work2_itr_filed" />
+                                                    </Field>
+                                                </>
+                                            )}
+                                        </div>
+                                        </>}
+                                    </div>
+
+                                    <div className="grid md:grid-cols-2 gap-6 pt-2 border-t border-border">
+                                        <Field label="Is your work experience relevant to the intended course?" testId="field-work_relevant_to_course">
+                                            <YesNo value={form.work_relevant_to_course} onChange={(v) => set("work_relevant_to_course", v)} testId="radio-work_relevant_to_course" />
+                                        </Field>
+                                        <Field label="Can this employment be independently verified?" testId="field-work_verification_done">
+                                            <YesNo value={form.work_verification_done} onChange={(v) => set("work_verification_done", v)} testId="radio-work_verification_done" />
                                         </Field>
                                     </div>
-                                    <div className="md:col-span-2">
-                                        <Field label="Do you meet the character requirement (PIC 4001) — no unresolved criminal convictions and willing to provide a Police Clearance Certificate?" testId="field-character_declaration">
-                                            <RadioGroup value={String(form.character_declaration)} onValueChange={(v) => set("character_declaration", v === "true")} className="flex gap-6">
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="true" id="ch-y" data-testid="radio-character-yes" /><Label htmlFor="ch-y">Yes</Label></div>
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="false" id="ch-n" data-testid="radio-character-no" /><Label htmlFor="ch-n">No / Not sure</Label></div>
-                                            </RadioGroup>
+                                </div>
+                            )}
+
+                            {/* STEP 5 — VISA & LOAN */}
+                            {step === 5 && (
+                                <div className="space-y-8">
+                                    <div className="grid md:grid-cols-2 gap-6">
+                                        <div className="md:col-span-2">
+                                            <Field label="Is your intended course in line with your previous education?" error={errors.course_in_line_with_previous_education} testId="field-course_in_line_with_previous_education">
+                                                <YesNo value={form.course_in_line_with_previous_education} onChange={(v) => set("course_in_line_with_previous_education", v)} testId="radio-course_in_line_with_previous_education" />
+                                            </Field>
+                                        </div>
+                                        <Field label="Applied for any country's visa before?" error={errors.applied_visa_before} testId="field-applied_visa_before">
+                                            <Select value={form.applied_visa_before} onValueChange={(v) => set("applied_visa_before", v)}>
+                                                <SelectTrigger data-testid="select-applied_visa_before"><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    {["None", "Student", "Tourist", "PR", "TR"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                </SelectContent>
+                                            </Select>
                                         </Field>
+                                        <Field label="Has a visa ever been refused (any country)?" error={errors.previous_visa_refusal} testId="field-previous_visa_refusal">
+                                            <YesNo value={form.previous_visa_refusal} onChange={(v) => set("previous_visa_refusal", v)} testId="radio-previous_visa_refusal" />
+                                        </Field>
+                                        {form.previous_visa_refusal && (
+                                            <>
+                                                <Field label="Country of refusal" error={errors.refusal_country} testId="field-refusal_country">
+                                                    <Input data-testid="input-refusal_country" value={form.refusal_country} onChange={(e) => set("refusal_country", e.target.value)} />
+                                                </Field>
+                                                <Field label="Stated reason for refusal" error={errors.refusal_reason} testId="field-refusal_reason">
+                                                    <Textarea data-testid="input-refusal_reason" value={form.refusal_reason} onChange={(e) => set("refusal_reason", e.target.value)} placeholder="e.g. GTE concerns, insufficient funds" />
+                                                </Field>
+                                            </>
+                                        )}
+                                        <div className="md:col-span-2 grid md:grid-cols-2 gap-6 pt-2 border-t border-border">
+                                            <Field label="Do you meet the character requirement (PIC 4001) — no unresolved criminal convictions, willing to provide a Police Clearance Certificate?" testId="field-character_declaration">
+                                                <YesNo value={form.character_declaration} onChange={(v) => set("character_declaration", v)} testId="radio-character_declaration" noLabel="No / Not sure" />
+                                            </Field>
+                                            <Field label="Do you meet the health requirement (PIC 4007) — no condition that would prevent an Immigration Medical Examination pass?" testId="field-health_declaration">
+                                                <YesNo value={form.health_declaration} onChange={(v) => set("health_declaration", v)} testId="radio-health_declaration" noLabel="No / Not sure" />
+                                            </Field>
+                                        </div>
                                     </div>
-                                    <div className="md:col-span-2">
-                                        <Field label="Do you meet the health requirement (PIC 4007) — no condition that would prevent an Immigration Medical Examination pass?" testId="field-health_declaration">
-                                            <RadioGroup value={String(form.health_declaration)} onValueChange={(v) => set("health_declaration", v === "true")} className="flex gap-6">
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="true" id="he-y" data-testid="radio-health-yes" /><Label htmlFor="he-y">Yes</Label></div>
-                                                <div className="flex items-center gap-2"><RadioGroupItem value="false" id="he-n" data-testid="radio-health-no" /><Label htmlFor="he-n">No / Not sure</Label></div>
-                                            </RadioGroup>
+
+                                    <div className="pt-4 border-t border-border">
+                                        <Field label="Is an education loan required?" error={errors.education_loan_required} testId="field-education_loan_required">
+                                            <YesNo value={form.education_loan_required} onChange={(v) => set("education_loan_required", v)} testId="radio-education_loan_required" />
                                         </Field>
+                                        {form.education_loan_required && (
+                                            <div className="grid md:grid-cols-2 gap-6 mt-6">
+                                                <Field label="Loan type" error={errors.loan_type} testId="field-loan_type">
+                                                    <Select value={form.loan_type} onValueChange={(v) => set("loan_type", v)}>
+                                                        <SelectTrigger data-testid="select-loan_type"><SelectValue placeholder="Select loan type" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            {["Secured", "Unsecured"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </Field>
+                                                <Field label="Lender / Bank name" error={errors.lender_bank_name} testId="field-lender_bank_name">
+                                                    <Input data-testid="input-lender_bank_name" value={form.lender_bank_name} onChange={(e) => set("lender_bank_name", e.target.value)} />
+                                                </Field>
+                                                <Field label="Loan amount (₹)" error={errors.loan_amount_inr} testId="field-loan_amount_inr">
+                                                    <Input data-testid="input-loan_amount_inr" type="number" value={form.loan_amount_inr} onChange={(e) => set("loan_amount_inr", e.target.value)} />
+                                                </Field>
+                                                <Field label="Annual interest rate (%)" error={errors.annual_interest_rate} testId="field-annual_interest_rate">
+                                                    <Input data-testid="input-annual_interest_rate" type="number" step="0.1" value={form.annual_interest_rate} onChange={(e) => set("annual_interest_rate", e.target.value)} placeholder="e.g. 10.5" />
+                                                </Field>
+                                                <Field label="Loan tenure (years)" error={errors.loan_tenure_years} testId="field-loan_tenure_years">
+                                                    <Input data-testid="input-loan_tenure_years" type="number" min="1" max="30" value={form.loan_tenure_years} onChange={(e) => set("loan_tenure_years", e.target.value)} placeholder="e.g. 10" />
+                                                </Field>
+                                                {emi.monthlyEmi > 0 && (
+                                                    <div className="md:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted rounded-xl p-4" data-testid="emi-result-box">
+                                                        <div className="text-center">
+                                                            <div className="font-display font-black text-lg text-primary">₹{emi.monthlyEmi.toLocaleString("en-IN")}</div>
+                                                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Monthly EMI</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="font-display font-black text-lg text-secondary">₹{emi.totalPayable.toLocaleString("en-IN")}</div>
+                                                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Total Payable</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="font-display font-black text-lg text-secondary">₹{emi.totalInterest.toLocaleString("en-IN")}</div>
+                                                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Total Interest</div>
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <div className="font-display font-black text-lg text-secondary">₹{emi.principal.toLocaleString("en-IN")}</div>
+                                                            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">Principal</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* STEP 6 — MARITAL DETAILS */}
+                            {step === 3 && (
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <Field label="Is the student married?" error={errors.is_married} testId="field-is_married">
+                                        <YesNo value={form.is_married} onChange={(v) => set("is_married", v)} testId="radio-is_married" />
+                                    </Field>
+                                    {form.is_married && (
+                                        <>
+                                            <Field label="Does the student have a child?" testId="field-has_child">
+                                                <YesNo value={form.has_child} onChange={(v) => set("has_child", v)} testId="radio-has_child" />
+                                            </Field>
+                                            {form.has_child && (
+                                                <Field label="Number of children" error={errors.child_count} testId="field-child_count">
+                                                    <Input type="number" min="1" value={form.child_count} onChange={(e) => set("child_count", e.target.value)} />
+                                                </Field>
+                                            )}
+                                            <Field label="Spouse will accompany?" testId="field-spouse_will_accompany">
+                                                <YesNo value={form.spouse_will_accompany} onChange={(v) => set("spouse_will_accompany", v)} testId="radio-spouse_will_accompany" />
+                                            </Field>
+                                            <Field label="Spouse qualification (optional)" testId="field-spouse_qualification">
+                                                <Input data-testid="input-spouse_qualification" value={form.spouse_qualification} onChange={(e) => set("spouse_qualification", e.target.value)} />
+                                            </Field>
+                                            <Field label="Spouse present activity" error={errors.spouse_present_activity} testId="field-spouse_activity">
+                                                <Select value={form.spouse_activity} onValueChange={(v) => set("spouse_activity", v)}>
+                                                    <SelectTrigger data-testid="select-spouse_activity"><SelectValue placeholder="Select an option" /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {["Working", "Studying", "Homemaker", "Unemployed"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                            </Field>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {step === 8 && (
+                                <div className="space-y-8">
+                                    <div>
+                                        <div className="gsa-overline mb-4">Mist proof of funds</div>
+                                        <p className="text-sm text-muted-foreground mb-4">Mist API integration is pending. These fields capture the information required to create a compliant Proof of Funds request.</p>
+                                        <div className="grid md:grid-cols-2 gap-5 mb-6">
+                                            <Field label="Account holder full name" error={errors.mist_account_holder_name}><Input value={form.mist_account_holder_name} onChange={(e) => set("mist_account_holder_name", e.target.value)} /></Field>
+                                            <Field label="Account holder relation to student" error={errors.mist_account_holder_relation}><Input value={form.mist_account_holder_relation} onChange={(e) => set("mist_account_holder_relation", e.target.value)} placeholder="e.g. Self, Father" /></Field>
+                                            <Field label="Primary source of funds" error={errors.mist_fund_source}><Select value={form.mist_fund_source} onValueChange={(v) => set("mist_fund_source", v)}><SelectTrigger><SelectValue placeholder="Select source" /></SelectTrigger><SelectContent>{["Savings", "Fixed deposit", "Sponsor income", "Education loan", "Investment", "Other"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field>
+                                            <Field label="Amount to verify (₹)" error={errors.mist_amount_inr}><Input type="number" min="0" value={form.mist_amount_inr} onChange={(e) => set("mist_amount_inr", e.target.value)} /></Field>
+                                            <Field label="Expected transfer timeline" error={errors.mist_transfer_timeline}><Select value={form.mist_transfer_timeline} onValueChange={(v) => set("mist_transfer_timeline", v)}><SelectTrigger><SelectValue placeholder="Select timeline" /></SelectTrigger><SelectContent>{["Within 7 days", "Within 30 days", "More than 30 days"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field>
+                                        </div>
+                                        <div className="gsa-overline mb-4">Other available fund sources</div>
+                                        <div className="grid md:grid-cols-2 gap-5">
+                                            {[
+                                                ["savings", "Savings account (nationalised bank)"],
+                                                ["fixed_deposits", "Fixed deposits (nationalised bank)"],
+                                                ["investments", "Investments (MF, SIP, post, LIC and others)"],
+                                                ["other_funds", "Any other source"],
+                                            ].map(([key, label]) => (
+                                                <div key={key} className="rounded-xl border border-border p-4 space-y-4">
+                                                    <label className="flex items-center gap-2 text-sm font-medium text-secondary cursor-pointer">
+                                                        <Checkbox checked={form[`${key}_available`]} onCheckedChange={(v) => set(`${key}_available`, !!v)} />
+                                                        {label} available
+                                                    </label>
+                                                    {form[`${key}_available`] && (
+                                                        <Field label="Amount (₹)" error={errors[`${key}_amount_inr`]}>
+                                                            <Input type="number" min="0" value={form[`${key}_amount_inr`]} onChange={(e) => set(`${key}_amount_inr`, e.target.value)} placeholder="e.g. 500000" />
+                                                        </Field>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="pt-6 border-t border-border">
+                                        <Field label="Is an education loan required?" error={errors.education_loan_required}>
+                                            <YesNo value={form.education_loan_required} onChange={(v) => set("education_loan_required", v)} testId="radio-education_loan_required_step8" />
+                                        </Field>
+                                        {form.education_loan_required && <div className="grid md:grid-cols-2 gap-5 mt-5">
+                                            <Field label="Loan type" error={errors.loan_type}><Select value={form.loan_type} onValueChange={(v) => set("loan_type", v)}><SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger><SelectContent>{["Secured", "Unsecured"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field>
+                                            <Field label="Loan amount (₹)" error={errors.loan_amount_inr}><Input type="number" min="0" value={form.loan_amount_inr} onChange={(e) => set("loan_amount_inr", e.target.value)} /></Field>
+                                            <Field label="Annual interest rate (%)" error={errors.annual_interest_rate}><Input type="number" min="0.1" max="30" step="0.1" value={form.annual_interest_rate} onChange={(e) => set("annual_interest_rate", e.target.value)} placeholder="Enter lender's RBI-compliant quoted rate" /></Field>
+                                            <Field label="Loan tenure (years)" error={errors.loan_tenure_years}><Input type="number" min="1" max="30" value={form.loan_tenure_years} onChange={(e) => set("loan_tenure_years", e.target.value)} /></Field>
+                                            {emi.monthlyEmi > 0 && <div className="md:col-span-2 rounded-xl bg-muted p-4 grid grid-cols-3 gap-4 text-center"><div><p className="font-bold text-primary">₹{emi.monthlyEmi.toLocaleString("en-IN")}</p><p className="text-xs text-muted-foreground">Monthly EMI</p></div><div><p className="font-bold text-secondary">₹{emi.totalInterest.toLocaleString("en-IN")}</p><p className="text-xs text-muted-foreground">Total interest</p></div><div><p className="font-bold text-secondary">₹{emi.totalPayable.toLocaleString("en-IN")}</p><p className="text-xs text-muted-foreground">Total payable</p></div></div>}
+                                        </div>}
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 9 && (
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <Field label="Do you meet the character requirement (PIC 4001)?" error={errors.character_declaration}>
+                                        <YesNo value={form.character_declaration} onChange={(v) => set("character_declaration", v)} testId="radio-character_declaration_step9" noLabel="No / Not sure" />
+                                    </Field>
+                                    <Field label="Do you meet the health requirement (PIC 4007)?" error={errors.health_declaration}>
+                                        <YesNo value={form.health_declaration} onChange={(v) => set("health_declaration", v)} testId="radio-health_declaration_step9" noLabel="No / Not sure" />
+                                    </Field>
+                                </div>
+                            )}
+
+                            {step === 9 && (
+                                <div className="space-y-6">
+                                    <div>
+                                        <div className="gsa-overline mb-2">Ready to generate your report</div>
+                                        <h2 className="font-display text-2xl font-bold text-secondary">Review your assessment</h2>
+                                        <p className="text-sm text-muted-foreground mt-2">Use Back to update any answer. When you submit, we will calculate your visa-readiness score and create your personalised report.</p>
+                                    </div>
+                                    <div className="grid sm:grid-cols-2 gap-4 rounded-xl bg-muted p-5 text-sm">
+                                        <div><span className="text-muted-foreground">Applicant</span><p className="font-semibold text-secondary">{form.first_name} {form.last_name}</p></div>
+                                        <div><span className="text-muted-foreground">Course</span><p className="font-semibold text-secondary">{form.intended_course}</p></div>
+                                        <div><span className="text-muted-foreground">Sponsor income</span><p className="font-semibold text-secondary">₹{form.sponsors.filter((s) => s.applicable).reduce((total, s) => total + (Number(s.annual_income_inr) || 0), 0).toLocaleString("en-IN")}</p></div>
+                                        <div><span className="text-muted-foreground">Intake</span><p className="font-semibold text-secondary">{form.intake_year}</p></div>
                                     </div>
                                 </div>
                             )}
@@ -382,4 +837,15 @@ export default function CalculatorClient() {
             <Footer />
         </div>
     );
+}
+
+function documentsForSponsor(sponsor) {
+    const byOccupation = {
+        Business: ["GST Registration (minimum 1 year old)", "MSME Registration (minimum 1 year old)", "Current account statement (minimum 1 year)", "Form 16 / ITR – last 3 years"],
+        Salaried: ["Salary account statement (minimum 1 year)", "Form 16 / ITR – last 3 years", "Employment / salary proof"],
+        Agriculture: ["Income certificate (current year)", "7/12 land document (latest)", "Bank statement showing agriculture income", "Utility / crop bills (recent)", "Form 16 / ITR – last 3 years"],
+        Retired: ["Pension statement", "Bank statement (minimum 1 year)", "ITR – last 3 years (if applicable)"],
+        Other: ["Income-source proof", "Bank statement (minimum 1 year)", "ITR – last 3 years (if applicable)"],
+    };
+    return [...new Set(byOccupation[sponsor.employment_type] || [])].map((label) => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_"), label }));
 }
