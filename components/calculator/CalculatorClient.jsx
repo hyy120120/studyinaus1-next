@@ -608,15 +608,16 @@ export default function CalculatorClient({ today: initialToday }) {
                             {/* STEP 3 — SPONSORS & INCOME PROOF */}
                             {step === 6 && (
                                 <div className="space-y-6">
-                                    <div>
+                                    <div className="space-y-5">
                                     {errors.sponsors && <p className="text-xs text-destructive">{errors.sponsors}</p>}
                                     <Field label="Who will sponsor you?"><Select value="" onValueChange={addSponsor}><SelectTrigger><SelectValue placeholder="Add a sponsor" /></SelectTrigger><SelectContent>{form.sponsors.filter((sp) => !sp.applicable).map((sp) => <SelectItem key={sp.id} value={sp.relation}>{sp.relation}</SelectItem>)}</SelectContent></Select></Field>
+                                    <div className="space-y-5">
                                     {form.sponsors.filter((sp) => sp.applicable).map((sp) => (
-                                        <div key={sp.id} className="border border-border rounded-xl p-5" data-testid={`sponsor-card-${sp.id}`}>
-                                            <div className="flex items-center justify-between mb-4"><span className="font-display font-bold text-secondary">{sp.relation}</span><button type="button" onClick={() => removeSponsor(sp.id)} className="text-sm font-medium text-destructive">Remove</button></div>
+                                        <div key={sp.id} className="rounded-xl border border-border bg-white p-5 shadow-sm md:p-6" data-testid={`sponsor-card-${sp.id}`}>
+                                            <div className="mb-5 flex items-center justify-between border-b border-border pb-4"><div><p className="gsa-overline">Sponsor details</p><span className="font-display font-bold text-secondary">{sp.relation}</span></div><button type="button" onClick={() => removeSponsor(sp.id)} className="text-sm font-medium text-destructive">Remove</button></div>
                                             {sp.applicable && (
                                                 <>
-                                                    <div className="grid md:grid-cols-3 gap-4 mb-4">
+                                                    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                                                         <Field label="Sponsor relation" error={errors[`sponsor_relation_${sp.id}`]}>
                                                             {sp.relation === "Other" ? <Input value={sp.other_relation || ""} onChange={(e) => updateSponsor(sp.id, "other_relation", e.target.value)} placeholder="Specify relationship" /> : <Input value={sp.relation} readOnly className="bg-muted" />}
                                                         </Field>
@@ -632,7 +633,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                                             <Input type="number" min="0" value={sp.annual_income_inr} onChange={(e) => updateSponsor(sp.id, "annual_income_inr", e.target.value)} data-testid={`input-sponsor_income_${sp.id}`} />
                                                         </Field>
                                                         {sp.employment_type === "Other" && <Field label="Specify occupation"><Input value={sp.other_occupation} onChange={(e) => updateSponsor(sp.id, "other_occupation", e.target.value)} /></Field>}
-                                                        <div className="flex flex-col gap-3 pt-6">
+                                                        <div className="grid gap-3 rounded-lg bg-muted/60 p-4 sm:grid-cols-2 md:col-span-2 xl:col-span-3">
                                                             <label className="flex items-center gap-2 text-sm cursor-pointer">
                                                                 <Checkbox checked={sp.itr_timely} onCheckedChange={(v) => updateSponsor(sp.id, "itr_timely", !!v)} data-testid={`sponsor_itr_timely_${sp.id}`} />
                                                                 Filing ITR timely?
@@ -647,7 +648,8 @@ export default function CalculatorClient({ today: initialToday }) {
                                             )}
                                         </div>
                                     ))}
-                                    <div className="rounded-xl bg-muted p-5"><p className="text-xs uppercase tracking-widest text-muted-foreground">Total annual sponsor income</p><p className="font-display text-2xl font-bold text-secondary mt-1">₹{totalSponsorIncome.toLocaleString("en-IN")}</p></div>
+                                    </div>
+                                    <div className="rounded-xl border border-border bg-muted p-5 md:p-6"><p className="text-xs uppercase tracking-widest text-muted-foreground">Total annual sponsor income</p><p className="mt-1 font-display text-2xl font-bold text-secondary">₹{totalSponsorIncome.toLocaleString("en-IN")}</p></div>
                                 </div>
                                 </div>
                             )}
@@ -765,32 +767,32 @@ export default function CalculatorClient({ today: initialToday }) {
                             {/* STEP 5 — VISA & LOAN */}
                             {step === 5 && (
                                 <div className="space-y-8">
-                                    <div className="grid md:grid-cols-2 gap-6">
-                                        <div className="md:col-span-2">
+                                    <div className="space-y-5">
+                                        <div className="rounded-xl border border-border p-5 md:p-6">
                                             <Field label="Is your intended course in line with your previous education?" error={errors.course_in_line_with_previous_education} testId="field-course_in_line_with_previous_education">
                                                 <YesNo value={form.course_in_line_with_previous_education} onChange={(v) => set("course_in_line_with_previous_education", v)} testId="radio-course_in_line_with_previous_education" />
                                             </Field>
                                         </div>
-                                        <Field label="Applied for any country's visa before?" error={errors.applied_visa_before} testId="field-applied_visa_before">
+                                        <div className="rounded-xl border border-border p-5 md:p-6"><Field label="Applied for any country's visa before?" error={errors.applied_visa_before} testId="field-applied_visa_before">
                                             <Select value={form.applied_visa_before} onValueChange={(v) => set("applied_visa_before", v)}>
                                                 <SelectTrigger data-testid="select-applied_visa_before"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
                                                     {["None", "Student", "Tourist", "PR", "TR"].map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}
                                                 </SelectContent>
                                             </Select>
-                                        </Field>
-                                        <Field label="Has a visa ever been refused (any country)?" error={errors.previous_visa_refusal} testId="field-previous_visa_refusal">
+                                        </Field></div>
+                                        <div className="rounded-xl border border-border p-5 md:p-6"><Field label="Has a visa ever been refused (any country)?" error={errors.previous_visa_refusal} testId="field-previous_visa_refusal">
                                             <YesNo value={form.previous_visa_refusal} onChange={(v) => set("previous_visa_refusal", v)} testId="radio-previous_visa_refusal" />
-                                        </Field>
+                                        </Field></div>
                                         {form.previous_visa_refusal && (
-                                            <>
+                                            <div className="grid gap-5 rounded-xl border border-border bg-muted/40 p-5 md:grid-cols-2 md:p-6">
                                                 <Field label="Country of refusal" error={errors.refusal_country} testId="field-refusal_country">
                                                     <Input data-testid="input-refusal_country" value={form.refusal_country} onChange={(e) => set("refusal_country", e.target.value)} />
                                                 </Field>
                                                 <Field label="Stated reason for refusal" error={errors.refusal_reason} testId="field-refusal_reason">
                                                     <Textarea data-testid="input-refusal_reason" value={form.refusal_reason} onChange={(e) => set("refusal_reason", e.target.value)} placeholder="e.g. GTE concerns, insufficient funds" />
                                                 </Field>
-                                            </>
+                                            </div>
                                         )}
                                     </div>
 
