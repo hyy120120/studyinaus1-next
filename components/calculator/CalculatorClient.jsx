@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowRight, Loader2, CheckCircle2, Plus, Check, ChevronsUpDown } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, CheckCircle2, Plus, Check, ChevronsUpDown, Mail, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import Footer from "@/components/Footer";
@@ -14,12 +14,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { computeScore, EDUCATION_LEVELS } from "@/lib/scoring";
 import { calculateEmi } from "@/lib/emi";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
-import { validateCalculatorStep, validateCalculatorForm } from "@/lib/validation";
+import { EMAIL_RE, isTenDigitPhone, validateCalculatorStep, validateCalculatorForm } from "@/lib/validation";
 import { POLICY_VERSIONS } from "@/lib/policies";
 import { COURSES } from "@/data/courses";
 
@@ -214,6 +215,7 @@ export default function CalculatorClient({ today: initialToday }) {
     const [today, setToday] = useState(initialToday);
     const [managedCourses, setManagedCourses] = useState(null);
     const [otherCourseFields, setOtherCourseFields] = useState({});
+    const [calculatorUnlocked, setCalculatorUnlocked] = useState(false);
 
     useEffect(() => {
         setToday(new Date().toISOString().slice(0, 10));
@@ -366,6 +368,22 @@ export default function CalculatorClient({ today: initialToday }) {
             setSubmitting(false);
         }
     };
+
+    const unlockCalculator = ({ name, email, phone }) => {
+        const [first_name = "", ...lastNameParts] = name.trim().split(/\s+/);
+        setForm((current) => ({
+            ...current,
+            first_name,
+            last_name: lastNameParts.join(" "),
+            email: email.trim(),
+            phone,
+            privacy_consent: true,
+            terms_consent: true,
+        }));
+        setCalculatorUnlocked(true);
+    };
+
+    if (!calculatorUnlocked) return <CalculatorVerificationGate onVerified={unlockCalculator} />;
 
     return (
         <div data-testid="calculator-page" className="bg-background min-h-screen">
@@ -892,22 +910,6 @@ export default function CalculatorClient({ today: initialToday }) {
                         </motion.div>
                     </AnimatePresence>
 
-                    <aside className="mt-6 rounded-xl border border-primary/25 bg-primary/5 p-5 text-sm text-secondary" aria-label="Required consents">
-                        <p className="font-semibold">Before continuing, please review and accept both documents.</p>
-                        <div className="mt-4 space-y-4">
-                            <label className="flex items-start gap-3 cursor-pointer">
-                                <Checkbox className="rounded-none" data-testid="checkbox-privacy-consent" checked={form.privacy_consent} onCheckedChange={(value) => set("privacy_consent", Boolean(value))} />
-                                <span><Link href="/legal/privacy" target="_blank" rel="noreferrer" className="underline font-semibold">Privacy Policy</Link><span className="block mt-1 text-muted-foreground">This explains what personal information we collect for your visa-readiness assessment, why we use it, and your privacy choices.</span></span>
-                            </label>
-                            {errors.privacy_consent && <p className="text-xs text-destructive" role="alert">{errors.privacy_consent}</p>}
-                            <label className="flex items-start gap-3 cursor-pointer">
-                                <Checkbox className="rounded-none" data-testid="checkbox-terms-consent" checked={form.terms_consent} onCheckedChange={(value) => set("terms_consent", Boolean(value))} />
-                                <span><Link href="/legal/terms" target="_blank" rel="noreferrer" className="underline font-semibold">Terms of Service</Link><span className="block mt-1 text-muted-foreground">These set the rules for using this calculator and clarify that the result is guidance, not visa or legal advice.</span></span>
-                            </label>
-                            {errors.terms_consent && <p className="text-xs text-destructive" role="alert">{errors.terms_consent}</p>}
-                        </div>
-                    </aside>
-
                     <div className="flex items-center justify-between mt-8">
                         <button
                             className="btn-outline disabled:opacity-40"
@@ -959,7 +961,6 @@ function CoursePicker({ courses, value, onChange, isOther, onOtherChange, testId
         onChange(course.title);
         setOpen(false);
     };
-
     return (
         <div className="space-y-2">
             <Popover open={open} onOpenChange={setOpen}>
@@ -990,6 +991,121 @@ function CoursePicker({ courses, value, onChange, isOther, onOtherChange, testId
                 </PopoverContent>
             </Popover>
             {isOther && <Input data-testid={`${testId}-other`} value={value} onChange={(event) => onChange(event.target.value)} placeholder="Enter your course name" />}
+        </div>
+    );
+}
+
+function CalculatorVerificationGate({ onVerified }) {
+    const [details, setDetails] = useState({ name: "", phone: "", email: "" });
+    const [otp, setOtp] = useState("");
+    const [otpSent, setOtpSent] = useState(false);
+    const [emailVerified, setEmailVerified] = useState(false);
+    const [privacyAccepted, setPrivacyAccepted] = useState(false);
+    const [termsAccepted, setTermsAccepted] = useState(false);
+    const [errors, setErrors] = useState({});
+    const [sending, setSending] = useState(false);
+    const [verifying, setVerifying] = useState(false);
+
+    const update = (field, value) => {
+        setDetails((current) => ({ ...current, [field]: value }));
+        setErrors((current) => ({ ...current, [field]: undefined, otp: undefined, form: undefined }));
+    };
+
+    const validateDetails = () => {
+        const next = {};
+        if (details.name.trim().length < 2) next.name = "Enter your full name.";
+        if (isTenDigitPhone(details.phone)) next.phone = "Enter exactly 10 digits.";
+        if (!EMAIL_RE.test(details.email.trim())) next.email = "Enter a valid email address.";
+        setErrors(next);
+        return Object.keys(next).length === 0;
+    };
+
+    const sendOtp = async () => {
+        if (!validateDetails()) return;
+        setSending(true);
+        try {
+            const response = await fetch("/api/email-otp/send", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: details.email.trim() }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "Could not send the verification code.");
+            setOtpSent(true);
+            setOtp("");
+            setEmailVerified(false);
+            setErrors({});
+            toast.success("Verification code sent to your email.");
+        } catch (error) {
+            setErrors((current) => ({ ...current, form: error.message || "Could not send the verification code." }));
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const verifyOtp = async () => {
+        if (otp.length !== 6) {
+            setErrors((current) => ({ ...current, otp: "Enter the 6-digit verification code." }));
+            return;
+        }
+        setVerifying(true);
+        try {
+            const response = await fetch("/api/email-otp/verify", {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: otp }),
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "The verification code could not be confirmed.");
+            setEmailVerified(true);
+            setErrors((current) => ({ ...current, otp: undefined, form: undefined }));
+            toast.success("Email verified.");
+        } catch (error) {
+            setErrors((current) => ({ ...current, otp: error.message || "The verification code could not be confirmed." }));
+        } finally {
+            setVerifying(false);
+        }
+    };
+
+    const proceed = () => {
+        const next = {};
+        if (!emailVerified) next.form = "Verify your email before continuing.";
+        if (!privacyAccepted) next.privacy = "Please accept the Privacy Policy to continue.";
+        if (!termsAccepted) next.terms = "Please accept the Terms of Service to continue.";
+        setErrors(next);
+        if (Object.keys(next).length === 0) onVerified(details);
+    };
+
+    return (
+        <div data-testid="calculator-verification-page" className="min-h-screen bg-background">
+            <section className="gsa-container pt-12 pb-20 md:pt-16">
+                <div className="mx-auto max-w-xl">
+                    <div className="gsa-overline mb-3">Visa Probability Calculator</div>
+                    <h1 className="gsa-h2">Verify your details</h1>
+                    <p className="mt-2 text-sm text-muted-foreground">Verify your email and accept the required terms to start your assessment.</p>
+                    <div className="mt-6 rounded-2xl border border-border bg-white p-8 shadow-sm md:p-10">
+                        <div className="mb-6 flex items-center gap-3 text-secondary"><span className="rounded-full bg-primary/10 p-2 text-primary"><ShieldCheck size={21} /></span><div><p className="font-semibold">Secure access</p><p className="text-sm text-muted-foreground">Your details will prefill the calculator.</p></div></div>
+                        <div className="space-y-5">
+                            <Field label="Full name" error={errors.name}><Input value={details.name} onChange={(event) => update("name", event.target.value)} placeholder="Your full name" autoComplete="name" /></Field>
+                            <Field label="Mobile number" error={errors.phone}><Input inputMode="numeric" maxLength={10} value={details.phone} onChange={(event) => update("phone", event.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10-digit mobile number" autoComplete="tel" /></Field>
+                            <Field label="Email ID" error={errors.email}><Input type="email" value={details.email} onChange={(event) => update("email", event.target.value)} placeholder="you@example.com" autoComplete="email" disabled={otpSent} /></Field>
+                            {!otpSent ? <button type="button" className="btn-primary w-full" onClick={sendOtp} disabled={sending}>{sending ? <><Loader2 className="animate-spin" size={16} /> Sending code…</> : <><Mail size={16} /> Send verification code</>}</button> : <>
+                                <div className="rounded-xl border border-border bg-muted/40 p-4"><p className="text-sm font-medium text-secondary">Enter the 6-digit code sent to {details.email}</p><div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><InputOTP maxLength={6} value={otp} onChange={(value) => { setOtp(value); setErrors((current) => ({ ...current, otp: undefined })); }} disabled={emailVerified}><InputOTPGroup>{Array.from({ length: 6 }, (_, index) => <InputOTPSlot key={index} index={index} />)}</InputOTPGroup></InputOTP><button type="button" className="btn-outline shrink-0" onClick={verifyOtp} disabled={verifying || emailVerified}>{verifying ? <Loader2 className="animate-spin" size={16} /> : emailVerified ? <><Check size={16} /> Verified</> : "Verify email"}</button></div>{errors.otp && <p className="mt-2 text-xs text-destructive" role="alert">{errors.otp}</p>}</div>
+                                {!emailVerified && <button type="button" className="text-sm font-semibold text-primary" onClick={sendOtp} disabled={sending}>{sending ? "Sending…" : "Resend verification code"}</button>}
+                            </>}
+                        </div>
+                    </div>
+                    <aside className="mt-6 rounded-xl border border-primary/25 bg-primary/5 p-5 text-sm text-secondary" aria-label="Required consents">
+                        <p className="font-semibold">Before continuing, please review and accept both documents.</p>
+                        <div className="mt-4 space-y-4">
+                            <label className="flex cursor-pointer items-start gap-3"><Checkbox className="rounded-none" checked={privacyAccepted} onCheckedChange={(value) => { setPrivacyAccepted(Boolean(value)); setErrors((current) => ({ ...current, privacy: undefined })); }} /><span><Link href="/legal/privacy" target="_blank" rel="noreferrer" className="font-semibold underline">Privacy Policy</Link><span className="mt-1 block text-muted-foreground">This explains what personal information we collect for your visa-readiness assessment, why we use it, and your privacy choices.</span></span></label>
+                            {errors.privacy && <p className="text-xs text-destructive" role="alert">{errors.privacy}</p>}
+                            <label className="flex cursor-pointer items-start gap-3"><Checkbox className="rounded-none" checked={termsAccepted} onCheckedChange={(value) => { setTermsAccepted(Boolean(value)); setErrors((current) => ({ ...current, terms: undefined })); }} /><span><Link href="/legal/terms" target="_blank" rel="noreferrer" className="font-semibold underline">Terms of Service</Link><span className="mt-1 block text-muted-foreground">These set the rules for using this calculator and clarify that the result is guidance, not visa or legal advice.</span></span></label>
+                            {errors.terms && <p className="text-xs text-destructive" role="alert">{errors.terms}</p>}
+                        </div>
+                    </aside>
+                    {errors.form && <p className="mt-4 text-sm text-destructive" role="alert">{errors.form}</p>}
+                    <button type="button" className="btn-primary mt-6 w-full" onClick={proceed} disabled={!emailVerified || !privacyAccepted || !termsAccepted}>Start visa calculator <ArrowRight size={16} /></button>
+                </div>
+            </section>
+            <Footer />
         </div>
     );
 }

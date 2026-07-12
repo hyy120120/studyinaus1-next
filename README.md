@@ -77,6 +77,21 @@ Until `.env.local` is configured, the calculator/PDF still works (using a
 local, non-persisted id), but course inquiries and the admin dashboard will
 show a clear error instead of failing silently.
 
+## Email OTP setup (required to enter the Visa Calculator)
+
+The calculator's entry screen sends a six-digit email verification code with
+[Resend](https://resend.com). Add these server-only values to `.env.local` and
+restart the app:
+
+```
+RESEND_API_KEY=re_xxxxxxxxx
+OTP_FROM_EMAIL=GoStudyInAustralia <verify@your-verified-domain.com>
+EMAIL_OTP_SECRET=a-long-random-secret
+```
+
+`OTP_FROM_EMAIL` must be a verified Resend sender. `EMAIL_OTP_SECRET` signs
+the short-lived, HTTP-only OTP state and must be unique to this deployment.
+
 ## Project structure
 
 ```
