@@ -102,7 +102,7 @@ function DateFilter({ value, onChange, count, label }) {
 }
 
 function LoginForm({ onLoggedIn }) {
-    const [email, setEmail] = useState("admin@gostudyinaustralia.com");
+    const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [loginError, setLoginError] = useState("");
