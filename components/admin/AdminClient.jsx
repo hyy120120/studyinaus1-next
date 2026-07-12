@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, Users, ChevronRight, Download, CalendarCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import {
-    onAuthStateChanged, signInWithEmailAndPassword, signOut, getIdTokenResult,
+    onAuthStateChanged, signInWithEmailAndPassword, signOut,
 } from "firebase/auth";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import Footer from "@/components/Footer";
@@ -115,12 +115,12 @@ function LoginForm({ onLoggedIn }) {
             if (!isFirebaseConfigured || !auth) {
                 throw new Error(`Firebase isn't configured. Missing: ${missingFirebaseConfig.join(", ") || "authentication configuration"}.`);
             }
-            const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-            const token = await getIdTokenResult(cred.user, true);
-            if (token.claims.admin !== true) {
-                await signOut(auth);
-                throw new Error("This account is not authorised for admin access.");
-            }
+            const cred = await signInWithEmailAndPassword(
+                auth,
+                email.trim(),
+                password
+            );
+
             toast.success("Welcome back, " + (cred.user.email || email));
             onLoggedIn();
         } catch (err) {
@@ -440,23 +440,14 @@ export default function AdminClient() {
 
     useEffect(() => {
         if (!isFirebaseConfigured) { setChecking(false); return; }
-        const unsub = onAuthStateChanged(auth, async (user) => {
+        const unsub = onAuthStateChanged(auth, (user) => {
             if (!user) {
                 setAuthed(false);
-                setChecking(false);
-                return;
+            } else {
+                setAuthed(true);
             }
-            try {
-                const token = await getIdTokenResult(user);
-                const isAdmin = token.claims.admin === true;
-                setAuthed(isAdmin);
-                if (!isAdmin) toast.error("This account is not authorised for admin access.");
-            } catch {
-                setAuthed(false);
-                toast.error("Could not verify admin access.");
-            } finally {
-                setChecking(false);
-            }
+
+            setChecking(false);
         });
         return () => unsub();
     }, []);
