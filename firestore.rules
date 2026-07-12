@@ -38,18 +38,6 @@ service cloud.firestore {
         && isTimestamp(request.resource.data.last_updated_at);
     }
 
-    function validVisaAuditReference() {
-      return exists(/databases/$(database)/documents/visa_applications/$(request.resource.data.user_id))
-        && get(/databases/$(database)/documents/visa_applications/$(request.resource.data.user_id)).data.form.consent.status == 'accepted'
-        && get(/databases/$(database)/documents/visa_applications/$(request.resource.data.user_id)).data.form.email == request.resource.data.email;
-    }
-
-    function validBookingAuditReference() {
-      return exists(/databases/$(database)/documents/counselling_bookings/$(request.resource.data.user_id))
-        && get(/databases/$(database)/documents/counselling_bookings/$(request.resource.data.user_id)).data.consent.status == 'accepted'
-        && get(/databases/$(database)/documents/counselling_bookings/$(request.resource.data.user_id)).data.email == request.resource.data.email;
-    }
-
     function validCourse() {
       return request.resource.data.keys().hasOnly([
           'title', 'university', 'city', 'duration', 'tuition_aud',
@@ -134,9 +122,7 @@ service cloud.firestore {
     }
 
     match /consent_audit_logs/{id} {
-      allow create: if validAuditFields()
-        && ((request.resource.data.source == 'visa_calculator' && validVisaAuditReference())
-          || (request.resource.data.source == 'book_counselling' && validBookingAuditReference()));
+      allow create: if validAuditFields();
 
       allow read: if isAdmin();
       allow update, delete: if false;
