@@ -2,44 +2,161 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isAdmin() {
-      return request.auth != null;
+      return request.auth != null && request.auth.token.admin == true;
     }
 
-    // Public submissions are create-only. Reads and all later changes require
-    // an authenticated user, which is this app's chosen admin policy.
+    function isTimestamp(value) {
+      return value is timestamp;
+    }
+
+    function validVisaConsent() {
+      return request.resource.data.form is map
+        && request.resource.data.form.privacy_consent == true
+        && request.resource.data.form.terms_consent == true
+        && request.resource.data.form.consent is map
+        && request.resource.data.form.consent.status == 'accepted'
+        && request.resource.data.form.consent.privacy_consent == true
+        && request.resource.data.form.consent.terms_consent == true;
+    }
+
+    function validAuditFields() {
+      return request.resource.data.keys().hasOnly([
+          'source', 'user_id', 'applicant_name', 'email', 'mobile',
+          'ip_address', 'consent_status', 'privacy_policy_version',
+          'terms_version', 'accepted_at', 'last_updated_at'
+        ])
+        && request.resource.data.source in ['visa_calculator', 'book_counselling']
+        && request.resource.data.user_id is string
+        && request.resource.data.applicant_name is string
+        && request.resource.data.email is string
+        && request.resource.data.mobile is string
+        && (request.resource.data.ip_address == null || request.resource.data.ip_address is string)
+        && request.resource.data.consent_status == 'accepted'
+        && request.resource.data.privacy_policy_version is string
+        && request.resource.data.terms_version is string
+        && isTimestamp(request.resource.data.accepted_at)
+        && isTimestamp(request.resource.data.last_updated_at);
+    }
+
+    function validVisaAuditReference() {
+      return exists(/databases/$(database)/documents/visa_applications/$(request.resource.data.user_id))
+        && get(/databases/$(database)/documents/visa_applications/$(request.resource.data.user_id)).data.form.consent.status == 'accepted'
+        && get(/databases/$(database)/documents/visa_applications/$(request.resource.data.user_id)).data.form.email == request.resource.data.email;
+    }
+
+    function validBookingAuditReference() {
+      return exists(/databases/$(database)/documents/counselling_bookings/$(request.resource.data.user_id))
+        && get(/databases/$(database)/documents/counselling_bookings/$(request.resource.data.user_id)).data.consent.status == 'accepted'
+        && get(/databases/$(database)/documents/counselling_bookings/$(request.resource.data.user_id)).data.email == request.resource.data.email;
+    }
+
+    function validCourse() {
+      return request.resource.data.keys().hasOnly([
+          'title', 'university', 'city', 'duration', 'tuition_aud',
+          'intake', 'tags', 'image', 'created_at', 'updated_at'
+        ])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.university is string
+        && request.resource.data.university.size() > 0
+        && request.resource.data.city is string
+        && request.resource.data.city.size() > 0
+        && request.resource.data.duration is string
+        && request.resource.data.duration.size() > 0
+        && request.resource.data.tuition_aud is number
+        && request.resource.data.tuition_aud > 0
+        && request.resource.data.intake is list
+        && request.resource.data.tags is list
+        && request.resource.data.image is string
+        && request.resource.data.image.size() > 0
+        && isTimestamp(request.resource.data.created_at)
+        && isTimestamp(request.resource.data.updated_at);
+    }
+
     match /visa_applications/{id} {
-      allow create: if request.resource.data.form.privacy_consent == true
-        && request.resource.data.consent.status == 'accepted';
+      allow create: if request.resource.data.keys().hasOnly([
+          'form', 'score', 'tier', 'breakdown', 'summary',
+          'strengths', 'weaknesses', 'recommendations', 'created_at'
+        ])
+        && validVisaConsent()
+        && request.resource.data.score is number
+        && request.resource.data.tier is string
+        && request.resource.data.breakdown is map
+        && request.resource.data.summary is string
+        && request.resource.data.strengths is list
+        && request.resource.data.weaknesses is list
+        && request.resource.data.recommendations is list
+        && isTimestamp(request.resource.data.created_at);
+
       allow read, update, delete: if isAdmin();
     }
 
     match /course_inquiries/{id} {
-      allow create: if true;
+      allow create: if request.resource.data.keys().hasOnly([
+          'name', 'email', 'phone', 'field_of_interest',
+          'intake', 'message', 'created_at'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.phone is string
+        && request.resource.data.field_of_interest is string
+        && request.resource.data.intake is string
+        && request.resource.data.message is string
+        && isTimestamp(request.resource.data.created_at);
+
       allow read, update, delete: if isAdmin();
     }
 
     match /counselling_bookings/{id} {
-      allow create: if request.resource.data.privacy_consent == true
+      allow create: if request.resource.data.keys().hasOnly([
+          'first_name', 'last_name', 'email', 'mobile',
+          'start_timeline', 'counselling_mode', 'study_level',
+          'funding_source', 'privacy_consent', 'terms_consent',
+          'consent', 'created_at'
+        ])
+        && request.resource.data.first_name is string
+        && request.resource.data.last_name is string
+        && request.resource.data.email is string
+        && request.resource.data.mobile is string
+        && request.resource.data.start_timeline is string
+        && request.resource.data.counselling_mode is string
+        && request.resource.data.study_level is string
+        && request.resource.data.funding_source is string
+        && request.resource.data.privacy_consent == true
         && request.resource.data.terms_consent == true
-        && request.resource.data.consent.status == 'accepted';
+        && request.resource.data.consent is map
+        && request.resource.data.consent.status == 'accepted'
+        && request.resource.data.consent.privacy_consent == true
+        && request.resource.data.consent.terms_consent == true
+        && isTimestamp(request.resource.data.created_at);
+
       allow read, update, delete: if isAdmin();
     }
 
-    // The public catalogue is readable by everyone. Course management is
-    // available to authenticated users, matching this app's admin policy.
-    match /courses/{id} {
-      allow read: if true;
-      allow create, update, delete: if request.auth != null;
-    }
-
-    // Immutable from the browser after creation. Admins can read it but
-    // should append a new event rather than overwrite consent evidence.
     match /consent_audit_logs/{id} {
-      allow create: if request.resource.data.consent_status == 'accepted'
-        && request.resource.data.privacy_policy_version is string
-        && request.resource.data.terms_version is string;
+      allow create: if validAuditFields()
+        && ((request.resource.data.source == 'visa_calculator' && validVisaAuditReference())
+          || (request.resource.data.source == 'book_counselling' && validBookingAuditReference()));
+
       allow read: if isAdmin();
       allow update, delete: if false;
+    }
+
+    match /courses/{id} {
+      allow read: if true;
+      allow create: if isAdmin() && validCourse();
+      allow update: if isAdmin()
+        && validCourse()
+        && request.resource.data.created_at == resource.data.created_at
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'university', 'city', 'duration', 'tuition_aud',
+          'intake', 'tags', 'image', 'updated_at'
+        ]);
+      allow delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

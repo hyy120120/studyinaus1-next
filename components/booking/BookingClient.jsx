@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
-import { validateBooking } from "@/lib/validation";
+import { isTenDigitPhone, validateBooking } from "@/lib/validation";
 import { POLICY_VERSIONS } from "@/lib/policies";
 
 const START_TIMELINES = [
@@ -68,6 +68,17 @@ export default function BookingClient() {
     const [submitted, setSubmitted] = useState(false);
 
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+    const setMobile = (value) => {
+        const mobile = value.replace(/\D/g, "").slice(0, 10);
+        const invalid = mobile.length > 0 && Boolean(isTenDigitPhone(mobile));
+        setForm((current) => ({ ...current, mobile }));
+        setErrors((current) => {
+            const next = { ...current };
+            if (invalid) next.mobile = "Invalid number. Enter exactly 10 digits.";
+            else delete next.mobile;
+            return next;
+        });
+    };
 
     const submit = async (e) => {
         e.preventDefault();
@@ -172,7 +183,7 @@ export default function BookingClient() {
                                     <Input data-testid="booking-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} />
                                 </Field>
                                 <Field label="Mobile number*" error={errors.mobile}>
-                                    <Input data-testid="booking-mobile" value={form.mobile} onChange={(e) => set("mobile", e.target.value)} placeholder="+91 98XXXXXXXX" />
+                                    <Input data-testid="booking-mobile" value={form.mobile} onChange={(e) => setMobile(e.target.value)} inputMode="numeric" maxLength={10} placeholder="10-digit mobile number" />
                                 </Field>
                             </div>
 
@@ -213,15 +224,15 @@ export default function BookingClient() {
                             <aside className="rounded-xl border border-primary/25 bg-primary/5 p-5 text-sm text-secondary" aria-label="Required consents">
                                 <p className="font-semibold">Before submitting, please review and accept both documents.</p>
                                 <div className="mt-4 space-y-4">
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <Checkbox className="rounded-none" data-testid="booking-checkbox-privacy-consent" checked={form.privacy_consent} onCheckedChange={(value) => set("privacy_consent", Boolean(value))} />
-                                        <span><Link href="/legal/privacy" target="_blank" rel="noreferrer" className="underline font-semibold">Privacy Policy</Link><span className="block mt-1 text-muted-foreground">This explains what personal information we collect for your counselling request, why we use it, and your privacy choices.</span></span>
-                                    </label>
+                                    <div className="flex items-start gap-3">
+                                        <Checkbox id="booking-privacy-consent" className="rounded-none" data-testid="booking-checkbox-privacy-consent" checked={form.privacy_consent === true} onCheckedChange={(value) => set("privacy_consent", value === true)} />
+                                        <Label htmlFor="booking-privacy-consent" className="cursor-pointer"><Link href="/legal/privacy" target="_blank" rel="noreferrer" className="underline font-semibold">Privacy Policy</Link><span className="block mt-1 text-muted-foreground">This explains what personal information we collect for your counselling request, why we use it, and your privacy choices.</span></Label>
+                                    </div>
                                     {errors.privacy_consent && <p className="text-xs text-destructive" role="alert">{errors.privacy_consent}</p>}
-                                    <label className="flex items-start gap-3 cursor-pointer">
-                                        <Checkbox className="rounded-none" data-testid="booking-checkbox-terms-consent" checked={form.terms_consent} onCheckedChange={(value) => set("terms_consent", Boolean(value))} />
-                                        <span><Link href="/legal/terms" target="_blank" rel="noreferrer" className="underline font-semibold">Terms of Service</Link><span className="block mt-1 text-muted-foreground">These set the rules for using our counselling service and clarify that guidance is not visa or legal advice.</span></span>
-                                    </label>
+                                    <div className="flex items-start gap-3">
+                                        <Checkbox id="booking-terms-consent" className="rounded-none" data-testid="booking-checkbox-terms-consent" checked={form.terms_consent === true} onCheckedChange={(value) => set("terms_consent", value === true)} />
+                                        <Label htmlFor="booking-terms-consent" className="cursor-pointer"><Link href="/legal/terms" target="_blank" rel="noreferrer" className="underline font-semibold">Terms of Service</Link><span className="block mt-1 text-muted-foreground">These set the rules for using our counselling service and clarify that guidance is not visa or legal advice.</span></Label>
+                                    </div>
                                     {errors.terms_consent && <p className="text-xs text-destructive" role="alert">{errors.terms_consent}</p>}
                                 </div>
                             </aside>
