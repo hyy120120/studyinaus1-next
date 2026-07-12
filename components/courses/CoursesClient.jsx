@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapPin, Clock3, Banknote, Search, Send } from "lucide-react";
 import { toast } from "sonner";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import Footer from "@/components/Footer";
 import Reveal from "@/components/Reveal";
 import { Input } from "@/components/ui/input";
@@ -20,14 +20,32 @@ export default function CoursesClient() {
     const [inquiry, setInquiry] = useState({ name: "", email: "", phone: "", field_of_interest: "", intake: "Feb 2026", message: "" });
     const [errors, setErrors] = useState({});
     const [submitting, setSubmitting] = useState(false);
+    const [managedCourses, setManagedCourses] = useState(null);
+
+    useEffect(() => {
+        if (!isFirebaseConfigured) return;
+
+        getDocs(collection(db, COLLECTIONS.COURSES))
+            .then((snapshot) => setManagedCourses(snapshot.docs.map((course) => ({ id: course.id, ...course.data() }))))
+            // Keep the curated local catalogue available if Firebase is offline
+            // or the public catalogue has not been deployed yet.
+            .catch(() => setManagedCourses([]));
+    }, []);
+
+    const courseCatalog = useMemo(() => {
+        // The local list is only a pre-migration fallback. Once courses are
+        // managed in Firestore, it becomes the single source of truth so a
+        // deleted course cannot reappear from the fallback catalogue.
+        return managedCourses?.length ? managedCourses : COURSES;
+    }, [managedCourses]);
 
     const filtered = useMemo(() => {
         const t = q.trim().toLowerCase();
-        if (!t) return COURSES;
-        return COURSES.filter((c) =>
+        if (!t) return courseCatalog;
+        return courseCatalog.filter((c) =>
             [c.title, c.university, c.city, (c.tags || []).join(" ")].join(" ").toLowerCase().includes(t)
         );
-    }, [q]);
+    }, [courseCatalog, q]);
 
     const submitInquiry = async (e) => {
         e.preventDefault();
@@ -89,7 +107,7 @@ export default function CoursesClient() {
 
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {filtered.map((c, i) => (
-                            <Reveal key={c.id} delay={0.04 * i} as="article" className="surface-card overflow-hidden flex flex-col hover:-translate-y-1 hover:shadow-lg transition-all duration-300" data-testid={`course-card-${c.id}`}>
+                            <Reveal key={c.id} delay={Math.min(0.06 * i, 0.3)} duration={0.5} direction={i % 2 ? "right" : "left"} as="article" className="surface-card overflow-hidden flex flex-col hover:-translate-y-1 hover:shadow-lg transition-all duration-300" data-testid={`course-card-${c.id}`}>
                                 <div className="aspect-[16/10] overflow-hidden bg-muted">
                                     <img src={c.image} alt={c.title} className="w-full h-full object-cover" />
                                 </div>

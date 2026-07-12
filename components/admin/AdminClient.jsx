@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { auth, db, isFirebaseConfigured, missingFirebaseConfig, COLLECTIONS } from "@/lib/firebase";
 import { downloadVisaReportPdf } from "@/lib/pdf";
+import CourseManager from "@/components/admin/CourseManager";
 
 const BREAKDOWN_KEYS = ["academic", "english", "work", "financial", "visa_history", "intent", "family"];
 const FORM_KEYS = [
@@ -153,6 +154,7 @@ const TABS = [
     { key: "applications", label: "Visa Applications" },
     { key: "counselling", label: "Counselling" },
     { key: "consent", label: "Consent Management" },
+    { key: "courses", label: "Courses" },
 ];
 
 function Dashboard({ onLogout }) {
@@ -258,14 +260,15 @@ function Dashboard({ onLogout }) {
             <div className="gsa-container pt-12 pb-6 flex items-center justify-between flex-wrap gap-4">
                 <div>
                     <div className="gsa-overline mb-2">Counselor Dashboard</div>
-                    <h1 className="gsa-h2">{tab === "applications" ? "Leads & Applications" : "Counselling Bookings"}</h1>
+                    <h1 className="gsa-h2">{tab === "applications" ? "Leads & Applications" : tab === "counselling" ? "Counselling Bookings" : tab === "consent" ? "Consent Management" : "Course Management"}</h1>
                 </div>
                 <div className="flex items-center gap-3">
-                    {tab === "applications" ? (
+                    {tab === "applications" && (
                         <button className="btn-outline" onClick={downloadCsv} data-testid="export-csv-btn">
                             <Download size={16} /> Export CSV
                         </button>
-                    ) : (
+                    )}
+                    {tab === "counselling" && (
                         <button className="btn-outline" onClick={downloadBookingsCsv} data-testid="export-bookings-csv-btn">
                             <Download size={16} /> Export CSV
                         </button>
@@ -427,6 +430,8 @@ function Dashboard({ onLogout }) {
                     </div>
                 </div>
             )}
+
+            {tab === "courses" && <CourseManager />}
 
             <Footer />
         </div>

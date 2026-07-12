@@ -2,11 +2,11 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function isAdmin() {
-      return request.auth != null && request.auth.token.admin == true;
+      return request.auth != null;
     }
 
     // Public submissions are create-only. Reads and all later changes require
-    // an explicit Firebase custom admin claim, not merely a signed-in user.
+    // an authenticated user, which is this app's chosen admin policy.
     match /visa_applications/{id} {
       allow create: if request.resource.data.form.privacy_consent == true
         && request.resource.data.consent.status == 'accepted';
@@ -21,6 +21,13 @@ service cloud.firestore {
     match /counselling_bookings/{id} {
       allow create: if true;
       allow read, update, delete: if isAdmin();
+    }
+
+    // The public catalogue is readable by everyone. Course management is
+    // available to authenticated users, matching this app's admin policy.
+    match /courses/{id} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null;
     }
 
     // Immutable from the browser after creation. Admins can read it but

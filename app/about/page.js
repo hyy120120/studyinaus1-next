@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Award, HeartHandshake, Quote, Mail, Phone, MapPin } from "lucide-react";
 import Footer from "@/components/Footer";
@@ -49,17 +50,33 @@ export default function AboutPage() {
                     </Reveal>
                 </div>
 
-                <Reveal className="gsa-container mt-16 max-w-3xl">
-                    <h2 className="gsa-h2 mb-6">Our promise</h2>
-                    <p className="gsa-body mb-4">
-                        We will never sell you a course you don't need or push a university that doesn't fit you. Every
-                        recommendation we make is anchored in your academics, your finances, and the long-term outcome
-                        you want — whether that's PR, a global career, or simply the best learning experience of your life.
-                    </p>
-                    <p className="gsa-body">
-                        This platform is a small free tool to help you start that journey honestly. Use it, share it,
-                        and when you're ready — talk to us.
-                    </p>
+                <Reveal className="gsa-container mt-16 grid items-center gap-10 md:grid-cols-2 md:gap-16">
+                    <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl bg-muted shadow-[0_18px_45px_rgba(26,54,43,0.14)]">
+                        <Image
+                            src="/mamta-jani.png"
+                            alt="Mamta Jani, founder of OnTrack Education"
+                            width={672}
+                            height={1100}
+                            className="h-full w-full object-cover"
+                            priority
+                        />
+                    </div>
+                    <div>
+                        <div className="gsa-overline mb-4">Meet Mamta Jani</div>
+                        <h2 className="gsa-h2 mb-5">Guidance that puts your future first.</h2>
+                        <p className="gsa-body mb-4">
+                            Mamta Jani is the founder of OnTrack Education and the guiding voice behind GoStudyInAustralia.
+                            Her approach is built on listening carefully, giving clear advice, and helping each student make
+                            an education decision that genuinely supports their long-term career.
+                        </p>
+                        <p className="gsa-body mb-4">
+                            This platform reflects that same commitment to trust and transparency: practical tools to help you
+                            understand your options, followed by experienced guidance when you are ready to plan the next step.
+                        </p>
+                        <p className="font-display text-lg font-bold leading-relaxed text-secondary">
+                            “The right course is not simply an admission decision — it is the foundation for a confident future.”
+                        </p>
+                    </div>
                 </Reveal>
             </section>
 
