@@ -93,7 +93,7 @@ export default function Footer() {
             </div>
 
             <div aria-hidden="true" className="pointer-events-none relative h-32 overflow-hidden sm:h-40 lg:h-48">
-                <div className="absolute bottom-3 left-4 whitespace-nowrap font-display text-[4.5rem] font-black leading-none tracking-[-0.065em] text-white/[0.07] sm:text-[7rem] lg:bottom-4 lg:left-10 lg:text-[10rem]">
+                <div className="absolute bottom-3 left-4 whitespace-nowrap font-display text-[4.5rem] font-black leading-none tracking-[-0.045em] text-white/[0.07] sm:text-[7rem] lg:bottom-4 lg:left-10 lg:text-[10rem]">
                     GoStudyInAustralia
                 </div>
             </div>
