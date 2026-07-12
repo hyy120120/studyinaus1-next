@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowRight, Loader2, CheckCircle2, Plus } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, CheckCircle2, Plus, Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import Footer from "@/components/Footer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,11 +14,14 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { computeScore, EDUCATION_LEVELS } from "@/lib/scoring";
 import { calculateEmi } from "@/lib/emi";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
 import { validateCalculatorStep, validateCalculatorForm } from "@/lib/validation";
 import { POLICY_VERSIONS } from "@/lib/policies";
+import { COURSES } from "@/data/courses";
 
 const STEPS = [
     "Personal Details",
@@ -206,16 +209,32 @@ export default function CalculatorClient({ today: initialToday }) {
     const [step, setStep] = useState(0);
     const [form, setForm] = useState(INITIAL);
     const [errors, setErrors] = useState({});
+    const [touched, setTouched] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [today, setToday] = useState(initialToday);
+    const [managedCourses, setManagedCourses] = useState(null);
+    const [otherCourseFields, setOtherCourseFields] = useState({});
 
     useEffect(() => {
         setToday(new Date().toISOString().slice(0, 10));
     }, []);
 
-    const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+    const markTouched = (...keys) => setTouched((current) => ({ ...current, ...Object.fromEntries(keys.map((key) => [key, true])) }));
+    const set = (k, v) => {
+        markTouched(k);
+        setForm((f) => ({ ...f, [k]: v }));
+    };
+    const setDob = (dob) => {
+        markTouched("dob");
+        setForm((f) => ({ ...f, dob, age: calcAge(dob) }));
+    };
 
     const updateEducation = (key, field, value) => {
+        const errorKey = {
+            stream: `edu_${key}_stream`, marks_obtained: `edu_${key}`, marks_total: `edu_${key}`,
+            start_year: `edu_${key}_start`, end_year: `edu_${key}_end`, backlog_count: `edu_${key}_bl`,
+        }[field];
+        if (errorKey) markTouched(errorKey);
         setForm((f) => ({
             ...f,
             education: f.education.map((l) => (l.key === key ? { ...l, [field]: value } : l)),
@@ -223,19 +242,25 @@ export default function CalculatorClient({ today: initialToday }) {
     };
 
     const updateSponsor = (id, field, value) => {
+        if (field === "annual_income_inr" || field === "employment_type") markTouched(`sponsor_${id}`);
         setForm((f) => ({
             ...f,
             sponsors: f.sponsors.map((s) => (s.id === id ? { ...s, [field]: value } : s)),
         }));
     };
 
-    const updateEmployment = (id, field, value) => setForm((f) => ({ ...f, employment_records: f.employment_records.map((record) => record.id === id ? { ...record, [field]: value } : record) }));
+    const updateEmployment = (id, field, value) => {
+        if (field === "employer") markTouched(`employment_${id}_employer`);
+        if (field === "date_of_joining") markTouched(`employment_${id}_joining`);
+        setForm((f) => ({ ...f, employment_records: f.employment_records.map((record) => record.id === id ? { ...record, [field]: value } : record) }));
+    };
     const addEmployment = () => setForm((f) => ({ ...f, employment_records: [...f.employment_records, createEmploymentRecord()] }));
     const removeEmployment = (id) => setForm((f) => ({ ...f, employment_records: f.employment_records.length > 1 ? f.employment_records.filter((record) => record.id !== id) : f.employment_records }));
     const addSponsor = (relation) => setForm((f) => ({ ...f, sponsors: f.sponsors.map((s) => s.relation === relation ? { ...s, applicable: true } : s) }));
     const removeSponsor = (id) => updateSponsor(id, "applicable", false);
 
     const selectHighestQualification = (key) => {
+        markTouched("highest_qualification");
         setForm((f) => ({
             ...f,
             highest_qualification: key,
@@ -244,19 +269,38 @@ export default function CalculatorClient({ today: initialToday }) {
     };
 
     const updateSponsorEmployment = (id, employment_type) => {
+        markTouched(`sponsor_${id}`);
         setForm((f) => ({ ...f, sponsors: f.sponsors.map((s) => s.id === id ? { ...s, employment_type, docs: documentsForSponsor({ employment_type }).map((doc) => ({ ...doc, status: "", year_established: "", remarks: "" })) } : s) }));
     };
 
     const updateSponsorDoc = (id, docKey, field, value) => {
+        markTouched(field === "year_established" ? `sponsor_doc_year_${id}_${docKey}` : `sponsor_doc_${id}_${docKey}`);
         setForm((f) => ({ ...f, sponsors: f.sponsors.map((s) => s.id === id ? { ...s, docs: s.docs.map((doc) => doc.key === docKey ? { ...doc, [field]: value } : doc) } : s) }));
     };
 
     const totalSponsorIncome = useMemo(() => form.sponsors.filter((s) => s.applicable).reduce((total, s) => total + (Number(s.annual_income_inr) || 0), 0), [form.sponsors]);
 
     useEffect(() => {
-        if (form.dob) set("age", calcAge(form.dob));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [form.dob]);
+        if (!isFirebaseConfigured) return;
+        getDocs(collection(db, COLLECTIONS.COURSES))
+            .then((snapshot) => setManagedCourses(snapshot.docs.map((course) => ({ id: course.id, ...course.data() }))))
+            .catch(() => setManagedCourses([]));
+    }, []);
+
+    const courseCatalog = useMemo(() => managedCourses === null ? COURSES : managedCourses, [managedCourses]);
+
+    useEffect(() => {
+        if (Object.keys(touched).length === 0) return;
+        const stepErrors = validateCalculatorStep(step, form);
+        setErrors((current) => {
+            const next = { ...current };
+            Object.keys(touched).forEach((key) => {
+                if (stepErrors[key]) next[key] = stepErrors[key];
+                else delete next[key];
+            });
+            return next;
+        });
+    }, [form, step, touched]);
 
     const progress = useMemo(() => ((step + 1) / STEPS.length) * 100, [step]);
 
@@ -376,10 +420,10 @@ export default function CalculatorClient({ today: initialToday }) {
                                         <Input data-testid="input-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="you@example.com" />
                                     </Field>
                                     <Field label="Contact number" error={errors.phone} testId="field-phone">
-                                        <Input data-testid="input-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98XXXXXXXX" />
+                                        <Input data-testid="input-phone" inputMode="numeric" maxLength={10} value={form.phone} onChange={(e) => set("phone", e.target.value.replace(/\D/g, "").slice(0, 10))} placeholder="10-digit phone number" />
                                     </Field>
                                     <Field label="Date of birth" hint={form.dob ? `Age: ${form.age}` : undefined} error={errors.dob} testId="field-dob">
-                                        <Input data-testid="input-dob" type="date" value={form.dob} onChange={(e) => set("dob", e.target.value)} max={today} />
+                                        <Input data-testid="input-dob" type="date" value={form.dob} onChange={(e) => setDob(e.target.value)} max={today} />
                                     </Field>
                                     <Field label="Nationality" error={errors.nationality} testId="field-nationality">
                                         <Input data-testid="input-nationality" value={form.nationality} onChange={(e) => set("nationality", e.target.value)} />
@@ -398,7 +442,14 @@ export default function CalculatorClient({ today: initialToday }) {
                                     </Field>
                                     <div className="md:col-span-2">
                                         <Field label="Intended course" error={errors.intended_course} testId="field-intended_course">
-                                            <Input data-testid="input-intended_course" value={form.intended_course} onChange={(e) => set("intended_course", e.target.value)} placeholder="Master of Data Science" />
+                                            <CoursePicker
+                                                courses={courseCatalog}
+                                                value={form.intended_course}
+                                                onChange={(value) => set("intended_course", value)}
+                                                isOther={Boolean(otherCourseFields.intended_course)}
+                                                onOtherChange={(isOther) => setOtherCourseFields((current) => ({ ...current, intended_course: isOther }))}
+                                                testId="select-intended_course"
+                                            />
                                         </Field>
                                     </div>
                                 </div>
@@ -414,7 +465,14 @@ export default function CalculatorClient({ today: initialToday }) {
                                             <div className="mb-4"><span className="font-display font-bold text-secondary">{lvl.label}</span><p className="text-xs text-muted-foreground mt-1">Completed qualification</p></div>
                                                 <div className="grid md:grid-cols-3 gap-4">
                                                     <Field label="Stream / Course" error={errors[`edu_${lvl.key}_stream`]} testId={`field-edu_stream_${lvl.key}`}>
-                                                        <Input value={lvl.stream} onChange={(e) => updateEducation(lvl.key, "stream", e.target.value)} placeholder="e.g. Science, Commerce" data-testid={`input-edu_stream_${lvl.key}`} />
+                                                        <CoursePicker
+                                                            courses={courseCatalog}
+                                                            value={lvl.stream}
+                                                            onChange={(value) => updateEducation(lvl.key, "stream", value)}
+                                                            isOther={Boolean(otherCourseFields[`edu_${lvl.key}_stream`])}
+                                                            onOtherChange={(isOther) => setOtherCourseFields((current) => ({ ...current, [`edu_${lvl.key}_stream`]: isOther }))}
+                                                            testId={`select-edu_stream_${lvl.key}`}
+                                                        />
                                                     </Field>
                                                     <Field label="Marks obtained" error={errors[`edu_${lvl.key}`]} testId={`field-edu_marks_${lvl.key}`}>
                                                         <Input type="number" value={lvl.marks_obtained} onChange={(e) => updateEducation(lvl.key, "marks_obtained", e.target.value)} data-testid={`input-edu_marks_obtained_${lvl.key}`} />
@@ -454,6 +512,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <Field label="Exam name" error={errors.english_test} testId="field-english_test">
                                         <Select value={form.english_test} onValueChange={(v) => {
+                                            markTouched("english_test", "exam_date", "overall_score", "exam_attempts", "listening", "reading", "writing", "speaking", "tentative_exam_date");
                                             setForm((f) => ({ ...f, english_test: v, listening: "", reading: "", writing: "", speaking: "", overall_score: "", exam_date: "" }));
                                         }}>
                                             <SelectTrigger data-testid="select-english_test"><SelectValue /></SelectTrigger>
@@ -890,4 +949,47 @@ function documentsForSponsor(sponsor) {
         Other: ["Income-source proof", "Bank statement (minimum 1 year)", "ITR – last 3 years (if applicable)"],
     };
     return [...new Set(byOccupation[sponsor.employment_type] || [])].map((label) => ({ key: label.toLowerCase().replace(/[^a-z0-9]+/g, "_"), label, year_required: /minimum 1 year|registration/.test(label.toLowerCase()) }));
+}
+
+function CoursePicker({ courses, value, onChange, isOther, onOtherChange, testId }) {
+    const [open, setOpen] = useState(false);
+
+    const selectCourse = (course) => {
+        onOtherChange(false);
+        onChange(course.title);
+        setOpen(false);
+    };
+
+    return (
+        <div className="space-y-2">
+            <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                    <button type="button" data-testid={testId} className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+                        <span className={value && !isOther ? "truncate" : "text-muted-foreground"}>{isOther ? "Other course" : value || "Search and select a course"}</span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                        <CommandInput placeholder="Search courses or universities..." />
+                        <CommandList>
+                            <CommandEmpty>No courses found.</CommandEmpty>
+                            <CommandGroup>
+                                {courses.map((course) => (
+                                    <CommandItem key={course.id} value={`${course.title} ${course.university || ""}`} onSelect={() => selectCourse(course)}>
+                                        <Check className={`h-4 w-4 ${!isOther && value === course.title ? "opacity-100" : "opacity-0"}`} />
+                                        <span className="min-w-0"><span className="block truncate">{course.title}</span>{course.university && <span className="block truncate text-xs text-muted-foreground">{course.university}</span>}</span>
+                                    </CommandItem>
+                                ))}
+                                <CommandItem forceMount value="Other course enter manually" onSelect={() => { onOtherChange(true); onChange(""); setOpen(false); }}>
+                                    Other course — enter manually
+                                </CommandItem>
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+            {isOther && <Input data-testid={`${testId}-other`} value={value} onChange={(event) => onChange(event.target.value)} placeholder="Enter your course name" />}
+        </div>
+    );
 }
