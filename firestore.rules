@@ -1,1 +1,145 @@
+rules_version = '2';
 
+service cloud.firestore {
+
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    function isTimestamp(value) {
+      return value is timestamp;
+    }
+
+    function validVisaConsent() {
+      return request.resource.data.form is map
+        && request.resource.data.form.privacy_consent == true
+        && request.resource.data.form.terms_consent == true
+        && request.resource.data.form.consent is map
+        && request.resource.data.form.consent.status == "accepted"
+        && request.resource.data.form.consent.privacy_consent == true
+        && request.resource.data.form.consent.terms_consent == true;
+    }
+
+    function validCourse() {
+
+      return request.resource.data.keys().hasOnly([
+        "title",
+        "university",
+        "city",
+        "duration",
+        "tuition_aud",
+        "intake",
+        "tags",
+        "image",
+        "created_at",
+        "updated_at"
+      ])
+
+      && request.resource.data.title is string
+      && request.resource.data.university is string
+      && request.resource.data.city is string
+      && request.resource.data.duration is string
+      && request.resource.data.tuition_aud is number
+      && request.resource.data.intake is list
+      && request.resource.data.tags is list
+      && request.resource.data.image is string
+      && isTimestamp(request.resource.data.created_at)
+      && isTimestamp(request.resource.data.updated_at);
+    }
+
+
+    // VISA APPLICATIONS
+
+    match /visa_applications/{id} {
+
+      // Public form submit
+      allow create: if validVisaConsent()
+        && request.resource.data.score is number
+        && request.resource.data.tier is string
+        && request.resource.data.summary is string
+        && request.resource.data.breakdown is map
+        && request.resource.data.strengths is list
+        && request.resource.data.weaknesses is list
+        && request.resource.data.recommendations is list
+        && isTimestamp(request.resource.data.created_at);
+
+      // Admin dashboard
+      allow read, update, delete: if isAdmin();
+    }
+
+    // COUNSELLING BOOKINGS
+
+    match /counselling_bookings/{id} {
+
+      allow create: if request.resource.data.first_name is string
+        && request.resource.data.last_name is string
+        && request.resource.data.email is string
+        && request.resource.data.mobile is string
+        && request.resource.data.privacy_consent == true
+        && request.resource.data.terms_consent == true
+        && request.resource.data.consent.status == "accepted"
+        && isTimestamp(request.resource.data.created_at);
+
+
+      allow read, update, delete: if isAdmin();
+
+    }
+    // COURSE INQUIRIES
+
+    match /course_inquiries/{id} {
+
+
+      allow create: if request.resource.data.name is string
+        && request.resource.data.email is string
+        && request.resource.data.phone is string
+        && request.resource.data.message is string
+        && isTimestamp(request.resource.data.created_at);
+
+      allow read, update, delete: if isAdmin();
+
+    }
+
+    // CONSENT LOGS
+
+    match /consent_audit_logs/{id} {
+
+      allow create: if request.resource.data.consent_status == "accepted"
+        && request.resource.data.email is string
+        && isTimestamp(request.resource.data.accepted_at)
+        && isTimestamp(request.resource.data.last_updated_at);
+
+      allow read: if isAdmin();
+
+      allow update, delete: if false;
+
+    }
+
+    // COURSES
+
+    match /courses/{id} {
+
+      // Website visitors can view courses
+      allow read: if true;
+
+      // Admin manage courses
+      allow create: if isAdmin()
+        && validCourse();
+
+      allow update: if isAdmin()
+        && validCourse();
+      allow delete: if isAdmin();
+
+    }
+
+    // BLOCK EVERYTHING ELSE
+
+    match /{document=**} {
+
+      allow read, write: if false;
+
+    }
+
+  }
+}

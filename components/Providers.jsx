@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Toaster } from "sonner";
 import Lenis from "lenis";
 
 function SmoothScroll() {
-    const lenisRef = useRef(null);
-
     useEffect(() => {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return undefined;
+
         const lenis = new Lenis({
             duration: 1.1,
             easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -16,8 +16,6 @@ function SmoothScroll() {
             wheelMultiplier: 1,
             touchMultiplier: 1.2,
         });
-        lenisRef.current = lenis;
-
         let rafId;
         function raf(time) {
             lenis.raf(time);

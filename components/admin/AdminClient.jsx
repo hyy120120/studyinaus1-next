@@ -8,7 +8,6 @@ import {
     onAuthStateChanged, signInWithEmailAndPassword, signOut,
 } from "firebase/auth";
 import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import Footer from "@/components/Footer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { auth, db, isFirebaseConfigured, missingFirebaseConfig, COLLECTIONS } from "@/lib/firebase";
@@ -274,7 +273,7 @@ function Dashboard({ onLogout }) {
     };
 
     return (
-        <div data-testid="admin-dashboard" className="bg-background">
+        <div data-testid="admin-dashboard" className="bg-background pb-12 md:pb-16">
             <div className="gsa-container pt-12 pb-6 flex items-center justify-between flex-wrap gap-4">
                 <div>
                     <div className="gsa-overline mb-2">Counselor Dashboard</div>
@@ -450,7 +449,6 @@ function Dashboard({ onLogout }) {
 
             {tab === "courses" && <CourseManager />}
 
-            <Footer />
         </div>
     );
 }
