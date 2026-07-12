@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Send, CalendarCheck } from "lucide-react";
+import Link from "next/link";
+import { Send, CalendarCheck, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import Footer from "@/components/Footer";
@@ -10,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
 import { validateBooking } from "@/lib/validation";
+import { POLICY_VERSIONS } from "@/lib/policies";
 
 const START_TIMELINES = [
     { value: "1_month", label: "Within 1 month" },
@@ -44,6 +47,8 @@ const INITIAL = {
     counselling_mode: "",
     study_level: "",
     funding_source: "",
+    privacy_consent: false,
+    terms_consent: false,
 };
 
 function Field({ label, children, error }) {
@@ -78,9 +83,33 @@ export default function BookingClient() {
             if (!isFirebaseConfigured) {
                 throw new Error("Booking isn't connected yet — set up Firebase to enable this form.");
             }
-            await addDoc(collection(db, COLLECTIONS.COUNSELLING_BOOKINGS), {
-                ...form,
+            const context = await fetch("/api/client-context", { cache: "no-store" }).then((response) => response.ok ? response.json() : {}).catch(() => ({}));
+            const consent = {
+                status: "accepted",
+                accepted_at: new Date().toISOString(),
+                privacy_policy_version: POLICY_VERSIONS.privacy,
+                terms_version: POLICY_VERSIONS.terms,
+                consent_policy_version: POLICY_VERSIONS.consent,
+                privacy_consent: form.privacy_consent,
+                terms_consent: form.terms_consent,
+                ip_address: context.ipAddress || null,
+            };
+            const bookingRef = await addDoc(collection(db, COLLECTIONS.COUNSELLING_BOOKINGS), {
+                ...form, consent,
                 created_at: serverTimestamp(),
+            });
+            await addDoc(collection(db, COLLECTIONS.CONSENT_AUDIT_LOGS), {
+                source: "book_counselling",
+                user_id: bookingRef.id,
+                applicant_name: `${form.first_name} ${form.last_name}`.trim(),
+                email: form.email,
+                mobile: form.mobile,
+                ip_address: consent.ip_address,
+                consent_status: "accepted",
+                privacy_policy_version: POLICY_VERSIONS.privacy,
+                terms_version: POLICY_VERSIONS.terms,
+                accepted_at: serverTimestamp(),
+                last_updated_at: serverTimestamp(),
             });
             setSubmitted(true);
             toast.success("Booking received! A counselor will reach out shortly.");
@@ -94,7 +123,7 @@ export default function BookingClient() {
     return (
         <div data-testid="book-counselling-page">
             <section className="bg-secondary text-white">
-                <div className="gsa-container py-16 md:py-24 max-w-3xl">
+                <div className="gsa-container py-10 md:py-14 max-w-5xl">
                     <Reveal className="gsa-overline text-primary mb-4">Free Counselling</Reveal>
                     <Reveal delay={0.08}>
                         <h1 className="font-display font-black text-4xl md:text-5xl leading-tight">
@@ -110,8 +139,20 @@ export default function BookingClient() {
                 </div>
             </section>
 
-            <section className="gsa-section">
-                <div className="gsa-container max-w-2xl">
+            <section className="py-10 md:py-14">
+                <div className="gsa-container max-w-6xl grid items-start gap-8 lg:grid-cols-5">
+                    <Reveal className="space-y-5 lg:col-span-2">
+                        <div className="surface-card p-7">
+                            <div className="mb-4 inline-flex rounded-full bg-primary/10 p-3 text-primary"><ShieldCheck size={23} /></div>
+                            <h2 className="font-display text-2xl font-bold text-secondary">Plan your next step with clarity.</h2>
+                            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">Our counsellors review your study goals, course direction, finances and timeline so you can make confident decisions about Australia.</p>
+                        </div>
+                        <div className="rounded-2xl bg-secondary p-7 text-white">
+                            <div className="gsa-overline text-primary">What to expect</div>
+                            <ul className="mt-4 space-y-3 text-sm text-white/80"><li>• A free, personalised discussion</li><li>• Clear advice on courses and intake timing</li><li>• Practical guidance for your visa pathway</li></ul>
+                        </div>
+                    </Reveal>
+                    <div className="lg:col-span-3">
                     {submitted ? (
                         <Reveal className="surface-card p-10 md:p-16 text-center" data-testid="booking-success">
                             <CalendarCheck className="text-primary mx-auto mb-4" size={40} strokeWidth={1.5} />
@@ -169,11 +210,28 @@ export default function BookingClient() {
                                 </Select>
                             </Field>
 
-                            <button type="submit" disabled={submitting} className="btn-primary w-full" data-testid="booking-submit-btn">
+                            <aside className="rounded-xl border border-primary/25 bg-primary/5 p-5 text-sm text-secondary" aria-label="Required consents">
+                                <p className="font-semibold">Before submitting, please review and accept both documents.</p>
+                                <div className="mt-4 space-y-4">
+                                    <label className="flex items-start gap-3 cursor-pointer">
+                                        <Checkbox className="rounded-none" data-testid="booking-checkbox-privacy-consent" checked={form.privacy_consent} onCheckedChange={(value) => set("privacy_consent", Boolean(value))} />
+                                        <span><Link href="/legal/privacy" target="_blank" rel="noreferrer" className="underline font-semibold">Privacy Policy</Link><span className="block mt-1 text-muted-foreground">This explains what personal information we collect for your counselling request, why we use it, and your privacy choices.</span></span>
+                                    </label>
+                                    {errors.privacy_consent && <p className="text-xs text-destructive" role="alert">{errors.privacy_consent}</p>}
+                                    <label className="flex items-start gap-3 cursor-pointer">
+                                        <Checkbox className="rounded-none" data-testid="booking-checkbox-terms-consent" checked={form.terms_consent} onCheckedChange={(value) => set("terms_consent", Boolean(value))} />
+                                        <span><Link href="/legal/terms" target="_blank" rel="noreferrer" className="underline font-semibold">Terms of Service</Link><span className="block mt-1 text-muted-foreground">These set the rules for using our counselling service and clarify that guidance is not visa or legal advice.</span></span>
+                                    </label>
+                                    {errors.terms_consent && <p className="text-xs text-destructive" role="alert">{errors.terms_consent}</p>}
+                                </div>
+                            </aside>
+
+                            <button type="submit" disabled={submitting || !form.privacy_consent || !form.terms_consent} className="btn-primary w-full" data-testid="booking-submit-btn">
                                 {submitting ? "Submitting…" : <>Book my session <Send size={16} /></>}
                             </button>
                         </Reveal>
                     )}
+                    </div>
                 </div>
             </section>
 

@@ -19,7 +19,9 @@ service cloud.firestore {
     }
 
     match /counselling_bookings/{id} {
-      allow create: if true;
+      allow create: if request.resource.data.privacy_consent == true
+        && request.resource.data.terms_consent == true
+        && request.resource.data.consent.status == 'accepted';
       allow read, update, delete: if isAdmin();
     }
 

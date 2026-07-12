@@ -350,7 +350,7 @@ export default function CalculatorClient({ today: initialToday }) {
                 });
                 id = ref.id;
                 await addDoc(collection(db, COLLECTIONS.CONSENT_AUDIT_LOGS), {
-                    user_id: id, applicant_name: formForScoring.full_name, email: formForScoring.email,
+                    source: "visa_calculator", user_id: id, applicant_name: formForScoring.full_name, email: formForScoring.email, mobile: formForScoring.phone,
                     ip_address: formForScoring.consent.ip_address, consent_status: "accepted",
                     privacy_policy_version: POLICY_VERSIONS.privacy, terms_version: POLICY_VERSIONS.terms,
                     accepted_at: serverTimestamp(), last_updated_at: serverTimestamp(),

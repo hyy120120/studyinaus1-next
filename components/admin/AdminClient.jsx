@@ -102,6 +102,15 @@ function DateFilter({ value, onChange, count, label }) {
     );
 }
 
+function ConsentSection({ title, description, records, loading }) {
+    return (
+        <div className="surface-card overflow-hidden">
+            <div className="border-b border-border p-4"><div className="font-bold text-secondary">{title}</div><p className="mt-1 text-xs text-muted-foreground">{description}</p></div>
+            {loading ? <div className="p-6 text-muted-foreground">Loading…</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-muted text-left text-xs uppercase tracking-wider text-muted-foreground"><th className="px-4 py-3">Applicant</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Policy versions</th><th className="px-4 py-3">Accepted</th><th className="px-4 py-3">IP (if available)</th></tr></thead><tbody className="divide-y divide-border">{records.length === 0 ? <tr><td className="px-4 py-6 text-muted-foreground" colSpan={6}>No consent records found.</td></tr> : records.map((record) => <tr key={record.id}><td className="px-4 py-3 text-secondary">{record.applicant_name || "—"}</td><td className="px-4 py-3 text-muted-foreground">{record.email || "—"}{record.mobile && <><br />{record.mobile}</>}</td><td className="px-4 py-3 text-secondary">{record.consent_status || "—"}</td><td className="px-4 py-3 text-secondary">Privacy {record.privacy_policy_version || "—"}<br />Terms {record.terms_version || "—"}</td><td className="px-4 py-3 text-secondary">{formatDate(record.accepted_at)}<br />{formatTime(record.accepted_at)}</td><td className="px-4 py-3 text-muted-foreground">{record.ip_address || "Not available"}</td></tr>)}</tbody></table></div>}
+        </div>
+    );
+}
+
 function LoginForm({ onLoggedIn }) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -195,6 +204,9 @@ function Dashboard({ onLogout }) {
         if (!bookingsDateFilter) return bookings;
         return bookings.filter((b) => dateKey(b.created_at) === bookingsDateFilter);
     }, [bookings, bookingsDateFilter]);
+
+    const visaConsents = useMemo(() => consents.filter((record) => record.source !== "book_counselling"), [consents]);
+    const counsellingConsents = useMemo(() => consents.filter((record) => record.source === "book_counselling"), [consents]);
 
     const downloadCsv = () => {
         try {
@@ -423,12 +435,18 @@ function Dashboard({ onLogout }) {
             )}
 
             {tab === "consent" && (
+                <>
+                <div className="gsa-container mt-10 grid gap-6 xl:grid-cols-2">
+                    <ConsentSection title="Visa Calculator Consents" description="Accepted Privacy Policy and Terms of Service for submitted visa assessments." records={visaConsents} loading={loading} />
+                    <ConsentSection title="Book Counselling Consents" description="Accepted Privacy Policy and Terms of Service for counselling bookings." records={counsellingConsents} loading={loading} />
+                </div>
                 <div className="gsa-container mt-10">
                     <div className="surface-card overflow-hidden">
                         <div className="p-4 border-b border-border"><div className="font-bold text-secondary">Consent audit trail</div><p className="text-xs text-muted-foreground mt-1">Accepted policy versions and timestamps for submitted assessments.</p></div>
                         {loading ? <div className="p-6 text-muted-foreground">Loading…</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-muted text-left text-xs uppercase tracking-wider text-muted-foreground"><th className="px-4 py-3">Applicant</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Policy versions</th><th className="px-4 py-3">Accepted</th><th className="px-4 py-3">IP (if available)</th></tr></thead><tbody className="divide-y divide-border">{consents.length === 0 ? <tr><td className="px-4 py-6 text-muted-foreground" colSpan={6}>No consent records found.</td></tr> : consents.map((record) => <tr key={record.id}><td className="px-4 py-3 text-secondary">{record.applicant_name || "—"}</td><td className="px-4 py-3 text-muted-foreground">{record.email || "—"}</td><td className="px-4 py-3 text-secondary">{record.consent_status || "—"}</td><td className="px-4 py-3 text-secondary">Privacy {record.privacy_policy_version || "—"}<br />Terms {record.terms_version || "—"}</td><td className="px-4 py-3 text-secondary">{formatDate(record.accepted_at)}<br />{formatTime(record.accepted_at)}</td><td className="px-4 py-3 text-muted-foreground">{record.ip_address || "Not available"}</td></tr>)}</tbody></table></div>}
                     </div>
                 </div>
+                </>
             )}
 
             {tab === "courses" && <CourseManager />}
