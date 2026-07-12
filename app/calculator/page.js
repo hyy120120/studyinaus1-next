@@ -8,5 +8,8 @@ export const metadata = {
 };
 
 export default function CalculatorPage() {
-    return <CalculatorClient />;
+    // Keep date constraints identical during server rendering and hydration.
+    const today = new Date().toISOString().slice(0, 10);
+
+    return <CalculatorClient today={today} />;
 }

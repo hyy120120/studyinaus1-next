@@ -74,6 +74,7 @@ const INITIAL = {
     intake_year: CURRENT_YEAR + 1,
     highest_qualification: "",
     privacy_consent: false,
+    terms_consent: false,
 
     // Academic
     education: EDUCATION_LEVELS.map((l) => ({
@@ -200,12 +201,17 @@ function calcAge(dobStr) {
     return age;
 }
 
-export default function CalculatorClient() {
+export default function CalculatorClient({ today: initialToday }) {
     const router = useRouter();
     const [step, setStep] = useState(0);
     const [form, setForm] = useState(INITIAL);
     const [errors, setErrors] = useState({});
     const [submitting, setSubmitting] = useState(false);
+    const [today, setToday] = useState(initialToday);
+
+    useEffect(() => {
+        setToday(new Date().toISOString().slice(0, 10));
+    }, []);
 
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -283,7 +289,8 @@ export default function CalculatorClient() {
             const context = await fetch("/api/client-context", { cache: "no-store" }).then((response) => response.ok ? response.json() : {}).catch(() => ({}));
             formForScoring.consent = {
                 status: "accepted", accepted_at: new Date().toISOString(), privacy_policy_version: POLICY_VERSIONS.privacy,
-                terms_version: POLICY_VERSIONS.terms, consent_policy_version: POLICY_VERSIONS.consent, ip_address: context.ipAddress || null,
+                terms_version: POLICY_VERSIONS.terms, consent_policy_version: POLICY_VERSIONS.consent,
+                privacy_consent: form.privacy_consent, terms_consent: form.terms_consent, ip_address: context.ipAddress || null,
             };
             const scoring = computeScore(formForScoring);
             const created_at = new Date().toISOString();
@@ -358,10 +365,6 @@ export default function CalculatorClient() {
                             {/* STEP 0 — PERSONAL */}
                             {step === 0 && (
                                 <div className="space-y-5">
-                                <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 text-sm text-secondary">
-                                    <label className="flex items-start gap-3 cursor-pointer"><Checkbox checked={form.privacy_consent} onCheckedChange={(value) => set("privacy_consent", Boolean(value))} /><span>I have read and agree to the <Link href="/legal/privacy" target="_blank" className="underline font-semibold">Privacy Policy</Link> and <Link href="/legal/terms" target="_blank" className="underline font-semibold">Terms of Service</Link>, and consent to the collection and processing of my personal information for this Australia visa-readiness assessment.</span></label>
-                                    {errors.privacy_consent && <p className="text-xs text-destructive mt-2">{errors.privacy_consent}</p>}
-                                </div>
                                 <div className="grid md:grid-cols-2 gap-6">
                                     <Field label="First name" error={errors.first_name} testId="field-first_name">
                                         <Input data-testid="input-first_name" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} placeholder="Rudra" />
@@ -376,7 +379,7 @@ export default function CalculatorClient() {
                                         <Input data-testid="input-phone" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+91 98XXXXXXXX" />
                                     </Field>
                                     <Field label="Date of birth" hint={form.dob ? `Age: ${form.age}` : undefined} error={errors.dob} testId="field-dob">
-                                        <Input data-testid="input-dob" type="date" value={form.dob} onChange={(e) => set("dob", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                                        <Input data-testid="input-dob" type="date" value={form.dob} onChange={(e) => set("dob", e.target.value)} max={today} />
                                     </Field>
                                     <Field label="Nationality" error={errors.nationality} testId="field-nationality">
                                         <Input data-testid="input-nationality" value={form.nationality} onChange={(e) => set("nationality", e.target.value)} />
@@ -459,13 +462,13 @@ export default function CalculatorClient() {
                                             </SelectContent>
                                         </Select>
                                     </Field>
-                                    {form.english_test === "Tentative" ? <Field label="Tentative exam date" error={errors.tentative_exam_date} testId="field-tentative_exam_date"><Input data-testid="input-tentative_exam_date" type="date" value={form.tentative_exam_date} onChange={(e) => set("tentative_exam_date", e.target.value)} min={new Date().toISOString().slice(0, 10)} /></Field> : (
+                                    {form.english_test === "Tentative" ? <Field label="Tentative exam date" error={errors.tentative_exam_date} testId="field-tentative_exam_date"><Input data-testid="input-tentative_exam_date" type="date" value={form.tentative_exam_date} onChange={(e) => set("tentative_exam_date", e.target.value)} min={today} /></Field> : (
                                         <>
                                             <Field label="Number of attempts" error={errors.exam_attempts} testId="field-exam_attempts">
                                                 <Input data-testid="input-exam_attempts" type="number" min="1" value={form.exam_attempts} onChange={(e) => set("exam_attempts", e.target.value)} />
                                             </Field>
                                             <Field label="Exam date" error={errors.exam_date} testId="field-exam_date">
-                                                <Input data-testid="input-exam_date" type="date" value={form.exam_date} onChange={(e) => set("exam_date", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                                                <Input data-testid="input-exam_date" type="date" value={form.exam_date} onChange={(e) => set("exam_date", e.target.value)} max={today} />
                                             </Field>
                                             <Field label={`Listening (${form.english_test === "IELTS" ? "0–9 bands" : form.english_test === "PTE" ? "10–90" : form.english_test === "TOEFL" ? "0–30" : "10–160"})`} error={errors.listening} testId="field-listening">
                                                 <Input data-testid="input-listening" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.listening} onChange={(e) => set("listening", e.target.value)} />
@@ -543,7 +546,7 @@ export default function CalculatorClient() {
                                         <Field label="Is your work experience relevant to the intended course?"><YesNo value={form.work_relevant_to_course} onChange={(v) => set("work_relevant_to_course", v)} testId="radio-work_relevant_to_course" /></Field>
                                         <Field label="Can this employment be independently verified?"><YesNo value={form.work_verification_done} onChange={(v) => set("work_verification_done", v)} testId="radio-work_verification_done" /></Field>
                                     </div>
-                                    <div className="space-y-5">{form.employment_records.map((record, index) => <div key={record.id} className="rounded-xl border border-border p-5"><div className="flex justify-between items-center mb-4"><div className="gsa-overline">Employment {index + 1}</div>{form.employment_records.length > 1 && <button type="button" onClick={() => removeEmployment(record.id)} className="text-sm font-medium text-destructive">Remove</button>}</div><div className="grid md:grid-cols-2 gap-5"><Field label="Employment status"><Select value={record.status} onValueChange={(v) => updateEmployment(record.id, "status", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EMPLOYMENT_STATUSES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field>{!["Not Applicable", "Unemployed", "Student"].includes(record.status) && <><Field label="Applicant name"><Input value={`${form.first_name} ${form.last_name}`.trim()} readOnly className="bg-muted" /></Field><Field label="Employer name" error={errors[`employment_${record.id}_employer`]}><Input value={record.employer} onChange={(e) => updateEmployment(record.id, "employer", e.target.value)} /></Field><Field label="Date of joining" error={errors[`employment_${record.id}_joining`]}><Input type="date" value={record.date_of_joining} onChange={(e) => updateEmployment(record.id, "date_of_joining", e.target.value)} max={new Date().toISOString().slice(0, 10)} /></Field><Field label="Currently working here?"><YesNo value={record.currently_working} onChange={(v) => updateEmployment(record.id, "currently_working", v)} testId={`employment-${record.id}-current`} /></Field>{!record.currently_working && <Field label="Last working day"><Input type="date" value={record.last_working_day} onChange={(e) => updateEmployment(record.id, "last_working_day", e.target.value)} /></Field>}<Field label="Mode of salary"><Select value={record.salary_mode} onValueChange={(v) => updateEmployment(record.id, "salary_mode", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{SALARY_MODES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="ITR / Form 16 filed?"><YesNo value={record.itr_filed} onChange={(v) => updateEmployment(record.id, "itr_filed", v)} testId={`employment-${record.id}-itr`} /></Field></>}</div></div>)}<button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-secondary hover:bg-muted" onClick={addEmployment}><Plus size={16} /> Add more employment</button></div>
+                                    <div className="space-y-5">{form.employment_records.map((record, index) => <div key={record.id} className="rounded-xl border border-border p-5"><div className="flex justify-between items-center mb-4"><div className="gsa-overline">Employment {index + 1}</div>{form.employment_records.length > 1 && <button type="button" onClick={() => removeEmployment(record.id)} className="text-sm font-medium text-destructive">Remove</button>}</div><div className="grid md:grid-cols-2 gap-5"><Field label="Employment status"><Select value={record.status} onValueChange={(v) => updateEmployment(record.id, "status", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EMPLOYMENT_STATUSES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field>{!["Not Applicable", "Unemployed", "Student"].includes(record.status) && <><Field label="Applicant name"><Input value={`${form.first_name} ${form.last_name}`.trim()} readOnly className="bg-muted" /></Field><Field label="Employer name" error={errors[`employment_${record.id}_employer`]}><Input value={record.employer} onChange={(e) => updateEmployment(record.id, "employer", e.target.value)} /></Field><Field label="Date of joining" error={errors[`employment_${record.id}_joining`]}><Input type="date" value={record.date_of_joining} onChange={(e) => updateEmployment(record.id, "date_of_joining", e.target.value)} max={today} /></Field><Field label="Currently working here?"><YesNo value={record.currently_working} onChange={(v) => updateEmployment(record.id, "currently_working", v)} testId={`employment-${record.id}-current`} /></Field>{!record.currently_working && <Field label="Last working day"><Input type="date" value={record.last_working_day} onChange={(e) => updateEmployment(record.id, "last_working_day", e.target.value)} /></Field>}<Field label="Mode of salary"><Select value={record.salary_mode} onValueChange={(v) => updateEmployment(record.id, "salary_mode", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{SALARY_MODES.map((v) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select></Field><Field label="ITR / Form 16 filed?"><YesNo value={record.itr_filed} onChange={(v) => updateEmployment(record.id, "itr_filed", v)} testId={`employment-${record.id}-itr`} /></Field></>}</div></div>)}<button type="button" className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-secondary hover:bg-muted" onClick={addEmployment}><Plus size={16} /> Add more employment</button></div>
                                     <div className="hidden">
                                         <div className="gsa-overline mb-4">Employment 1</div>
                                         <div className="grid md:grid-cols-2 gap-6">
@@ -561,7 +564,7 @@ export default function CalculatorClient() {
                                                         <Input data-testid="input-work1_employer" value={form.work1_employer} onChange={(e) => set("work1_employer", e.target.value)} />
                                                     </Field>
                                                     <Field label="Date of joining" error={errors.work1_date_of_joining} testId="field-work1_date_of_joining">
-                                                        <Input data-testid="input-work1_date_of_joining" type="date" value={form.work1_date_of_joining} onChange={(e) => set("work1_date_of_joining", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                                                        <Input data-testid="input-work1_date_of_joining" type="date" value={form.work1_date_of_joining} onChange={(e) => set("work1_date_of_joining", e.target.value)} max={today} />
                                                     </Field>
                                                     <Field label="Currently working here?" testId="field-work1_currently_working">
                                                         <YesNo value={form.work1_currently_working} onChange={(v) => set("work1_currently_working", v)} testId="radio-work1_currently_working" />
@@ -606,7 +609,7 @@ export default function CalculatorClient() {
                                                         <Input data-testid="input-work2_employer" value={form.work2_employer} onChange={(e) => set("work2_employer", e.target.value)} />
                                                     </Field>
                                                     <Field label="Date of joining" error={errors.work2_date_of_joining} testId="field-work2_date_of_joining">
-                                                        <Input data-testid="input-work2_date_of_joining" type="date" value={form.work2_date_of_joining} onChange={(e) => set("work2_date_of_joining", e.target.value)} max={new Date().toISOString().slice(0, 10)} />
+                                                        <Input data-testid="input-work2_date_of_joining" type="date" value={form.work2_date_of_joining} onChange={(e) => set("work2_date_of_joining", e.target.value)} max={today} />
                                                     </Field>
                                                     <Field label="Currently working here?" testId="field-work2_currently_working">
                                                         <YesNo value={form.work2_currently_working} onChange={(v) => set("work2_currently_working", v)} testId="radio-work2_currently_working" />
@@ -829,6 +832,22 @@ export default function CalculatorClient() {
                             )}
                         </motion.div>
                     </AnimatePresence>
+
+                    <aside className="mt-6 rounded-xl border border-primary/25 bg-primary/5 p-5 text-sm text-secondary" aria-label="Required consents">
+                        <p className="font-semibold">Before continuing, please review and accept both documents.</p>
+                        <div className="mt-4 space-y-4">
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <Checkbox className="rounded-none" data-testid="checkbox-privacy-consent" checked={form.privacy_consent} onCheckedChange={(value) => set("privacy_consent", Boolean(value))} />
+                                <span><Link href="/legal/privacy" target="_blank" rel="noreferrer" className="underline font-semibold">Privacy Policy</Link><span className="block mt-1 text-muted-foreground">This explains what personal information we collect for your visa-readiness assessment, why we use it, and your privacy choices.</span></span>
+                            </label>
+                            {errors.privacy_consent && <p className="text-xs text-destructive" role="alert">{errors.privacy_consent}</p>}
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <Checkbox className="rounded-none" data-testid="checkbox-terms-consent" checked={form.terms_consent} onCheckedChange={(value) => set("terms_consent", Boolean(value))} />
+                                <span><Link href="/legal/terms" target="_blank" rel="noreferrer" className="underline font-semibold">Terms of Service</Link><span className="block mt-1 text-muted-foreground">These set the rules for using this calculator and clarify that the result is guidance, not visa or legal advice.</span></span>
+                            </label>
+                            {errors.terms_consent && <p className="text-xs text-destructive" role="alert">{errors.terms_consent}</p>}
+                        </div>
+                    </aside>
 
                     <div className="flex items-center justify-between mt-8">
                         <button

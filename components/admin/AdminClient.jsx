@@ -11,7 +11,7 @@ import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import Footer from "@/components/Footer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { auth, db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
+import { auth, db, isFirebaseConfigured, missingFirebaseConfig, COLLECTIONS } from "@/lib/firebase";
 import { downloadVisaReportPdf } from "@/lib/pdf";
 
 const BREAKDOWN_KEYS = ["academic", "english", "work", "financial", "visa_history", "intent", "family"];
@@ -105,15 +105,17 @@ function LoginForm({ onLoggedIn }) {
     const [email, setEmail] = useState("admin@gostudyinaustralia.com");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
+    const [loginError, setLoginError] = useState("");
 
     const submit = async (e) => {
         e.preventDefault();
+        setLoginError("");
         setLoading(true);
         try {
-            if (!isFirebaseConfigured) {
-                throw new Error("Firebase isn't configured yet — add your project keys to .env.local.");
+            if (!isFirebaseConfigured || !auth) {
+                throw new Error(`Firebase isn't configured. Missing: ${missingFirebaseConfig.join(", ") || "authentication configuration"}.`);
             }
-            const cred = await signInWithEmailAndPassword(auth, email, password);
+            const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
             const token = await getIdTokenResult(cred.user, true);
             if (token.claims.admin !== true) {
                 await signOut(auth);
@@ -122,7 +124,12 @@ function LoginForm({ onLoggedIn }) {
             toast.success("Welcome back, " + (cred.user.email || email));
             onLoggedIn();
         } catch (err) {
-            toast.error(err?.message || "Login failed");
+            const code = err?.code || "auth/unknown";
+            const message = err?.message || "Firebase did not provide an error message.";
+            console.error("Firebase email/password sign-in failed", { code, message });
+            const displayMessage = `${code}: ${message}`;
+            setLoginError(displayMessage);
+            toast.error(displayMessage);
         } finally {
             setLoading(false);
         }
@@ -136,6 +143,7 @@ function LoginForm({ onLoggedIn }) {
                 <div className="space-y-2"><Label>Email</Label><Input data-testid="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
                 <div className="space-y-2"><Label>Password</Label><Input data-testid="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
                 <button type="submit" disabled={loading} className="btn-primary w-full" data-testid="login-submit-btn">{loading ? "Signing in…" : "Sign in"}</button>
+                {loginError && <p className="text-sm text-destructive" role="alert" data-testid="login-error">{loginError}</p>}
             </form>
         </div>
     );
