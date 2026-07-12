@@ -102,10 +102,10 @@ function DateFilter({ value, onChange, count, label }) {
     );
 }
 
-function ConsentSection({ title, description, records, loading }) {
+function ConsentSection({ title, description, records, loading, module, onModuleChange }) {
     return (
         <div className="surface-card overflow-hidden">
-            <div className="border-b border-border p-4"><div className="font-bold text-secondary">{title}</div><p className="mt-1 text-xs text-muted-foreground">{description}</p></div>
+            <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-start sm:justify-between"><div><div className="font-bold text-secondary">{title}</div><p className="mt-1 text-xs text-muted-foreground">{description}</p></div><label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground"><span>Module</span><select value={module} onChange={(event) => onModuleChange(event.target.value)} className="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-secondary focus:outline-none focus:ring-2 focus:ring-primary/30" data-testid="consent-module-select" aria-label="Consent module"><option value="visa">Visa Calculator</option><option value="counselling">Book Counselling</option></select></label></div>
             {loading ? <div className="p-6 text-muted-foreground">Loading…</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-muted text-left text-xs uppercase tracking-wider text-muted-foreground"><th className="px-4 py-3">Applicant</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Policy versions</th><th className="px-4 py-3">Accepted</th><th className="px-4 py-3">IP (if available)</th></tr></thead><tbody className="divide-y divide-border">{records.length === 0 ? <tr><td className="px-4 py-6 text-muted-foreground" colSpan={6}>No consent records found.</td></tr> : records.map((record) => <tr key={record.id}><td className="px-4 py-3 text-secondary">{record.applicant_name || "—"}</td><td className="px-4 py-3 text-muted-foreground">{record.email || "—"}{record.mobile && <><br />{record.mobile}</>}</td><td className="px-4 py-3 text-secondary">{record.consent_status || "—"}</td><td className="px-4 py-3 text-secondary">Privacy {record.privacy_policy_version || "—"}<br />Terms {record.terms_version || "—"}</td><td className="px-4 py-3 text-secondary">{formatDate(record.accepted_at)}<br />{formatTime(record.accepted_at)}</td><td className="px-4 py-3 text-muted-foreground">{record.ip_address || "Not available"}</td></tr>)}</tbody></table></div>}
         </div>
     );
@@ -175,6 +175,7 @@ function Dashboard({ onLogout }) {
     const [loading, setLoading] = useState(true);
     const [appsDateFilter, setAppsDateFilter] = useState("");
     const [bookingsDateFilter, setBookingsDateFilter] = useState("");
+    const [consentModule, setConsentModule] = useState("visa");
 
     useEffect(() => {
         async function load() {
@@ -207,6 +208,11 @@ function Dashboard({ onLogout }) {
 
     const visaConsents = useMemo(() => consents.filter((record) => record.source !== "book_counselling"), [consents]);
     const counsellingConsents = useMemo(() => consents.filter((record) => record.source === "book_counselling"), [consents]);
+    const selectedConsentRecords = consentModule === "counselling" ? counsellingConsents : visaConsents;
+    const consentTitle = consentModule === "counselling" ? "Book Counselling Consents" : "Visa Calculator Consents";
+    const consentDescription = consentModule === "counselling"
+        ? "Accepted Privacy Policy and Terms of Service for counselling bookings."
+        : "Accepted Privacy Policy and Terms of Service for submitted visa assessments.";
 
     const downloadCsv = () => {
         try {
@@ -436,15 +442,8 @@ function Dashboard({ onLogout }) {
 
             {tab === "consent" && (
                 <>
-                <div className="gsa-container mt-10 grid gap-6 xl:grid-cols-2">
-                    <ConsentSection title="Visa Calculator Consents" description="Accepted Privacy Policy and Terms of Service for submitted visa assessments." records={visaConsents} loading={loading} />
-                    <ConsentSection title="Book Counselling Consents" description="Accepted Privacy Policy and Terms of Service for counselling bookings." records={counsellingConsents} loading={loading} />
-                </div>
                 <div className="gsa-container mt-10">
-                    <div className="surface-card overflow-hidden">
-                        <div className="p-4 border-b border-border"><div className="font-bold text-secondary">Consent audit trail</div><p className="text-xs text-muted-foreground mt-1">Accepted policy versions and timestamps for submitted assessments.</p></div>
-                        {loading ? <div className="p-6 text-muted-foreground">Loading…</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="bg-muted text-left text-xs uppercase tracking-wider text-muted-foreground"><th className="px-4 py-3">Applicant</th><th className="px-4 py-3">Email</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Policy versions</th><th className="px-4 py-3">Accepted</th><th className="px-4 py-3">IP (if available)</th></tr></thead><tbody className="divide-y divide-border">{consents.length === 0 ? <tr><td className="px-4 py-6 text-muted-foreground" colSpan={6}>No consent records found.</td></tr> : consents.map((record) => <tr key={record.id}><td className="px-4 py-3 text-secondary">{record.applicant_name || "—"}</td><td className="px-4 py-3 text-muted-foreground">{record.email || "—"}</td><td className="px-4 py-3 text-secondary">{record.consent_status || "—"}</td><td className="px-4 py-3 text-secondary">Privacy {record.privacy_policy_version || "—"}<br />Terms {record.terms_version || "—"}</td><td className="px-4 py-3 text-secondary">{formatDate(record.accepted_at)}<br />{formatTime(record.accepted_at)}</td><td className="px-4 py-3 text-muted-foreground">{record.ip_address || "Not available"}</td></tr>)}</tbody></table></div>}
-                    </div>
+                    <ConsentSection title={consentTitle} description={consentDescription} records={selectedConsentRecords} loading={loading} module={consentModule} onModuleChange={setConsentModule} />
                 </div>
                 </>
             )}
