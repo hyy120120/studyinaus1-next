@@ -4,30 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Mail, MapPin, Phone } from "lucide-react";
 
-function AustralianLandmarks() {
-    return (
-        <svg
-            aria-hidden="true"
-            className="absolute bottom-0 right-0 h-auto w-[52rem] max-w-[78%] text-white/[0.07]"
-            viewBox="0 0 900 260"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-        >
-            <path d="M0 235H900" stroke="currentColor" strokeWidth="4" />
-            <path d="M470 218C565 54 760 36 900 218" stroke="currentColor" strokeWidth="8" />
-            <path d="M494 218C575 80 748 68 874 218" stroke="currentColor" strokeWidth="3" />
-            <path d="M520 180H870M550 139H838M590 106H803" stroke="currentColor" strokeWidth="3" />
-            <path d="M500 218V174M545 218V132M590 218V100M638 218V76M686 218V65M734 218V72M782 218V94M830 218V130M874 218V174" stroke="currentColor" strokeWidth="5" />
-            <path d="M500 218L470 248M874 218L900 248" stroke="currentColor" strokeWidth="6" />
-            <path d="M118 220C160 151 218 120 275 220H118Z" fill="currentColor" />
-            <path d="M207 220C248 102 336 89 379 220H207Z" fill="currentColor" />
-            <path d="M297 220C345 132 419 132 465 220H297Z" fill="currentColor" />
-            <path d="M74 220C98 180 129 165 158 220H74Z" fill="currentColor" />
-            <path d="M55 220H472" stroke="currentColor" strokeWidth="5" />
-        </svg>
-    );
-}
-
 const exploreLinks = [
     ["/calculator", "Visa Calculator"],
     ["/book-counselling", "Book Counselling"],
@@ -66,11 +42,6 @@ function FooterLinks({ title, links }) {
 export default function Footer() {
     return (
         <footer className="relative mt-20 overflow-hidden bg-[#0c3529] text-white" data-testid="site-footer">
-            <AustralianLandmarks />
-            <div aria-hidden="true" className="pointer-events-none absolute bottom-5 left-4 font-serif text-[7.5rem] leading-none tracking-[-0.08em] text-white/[0.055] sm:text-[11rem] lg:left-10 lg:text-[14rem]">
-                Australia
-            </div>
-
             <div className="gsa-container relative z-10 grid grid-cols-1 gap-12 py-16 md:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1.35fr] lg:gap-10 lg:py-20">
                 <div className="max-w-sm">
                     <Link href="/" className="mb-5 inline-flex items-center gap-3" aria-label="GoStudyInAustralia home">
@@ -85,9 +56,6 @@ export default function Footer() {
                     </Link>
                     <p className="text-sm leading-7 text-white/75">
                         Powered by OnTrack Education, founded by Mamta Jani. We provide trusted guidance for students planning to study in Australia.
-                    </p>
-                    <p className="mt-3 text-sm leading-7 text-white/75">
-                         
                     </p>
                     <p className="mt-3 text-sm leading-7 text-white/75">
                         Our goal is to make the Australia study-abroad experience simple, transparent, and successful.
@@ -121,6 +89,12 @@ export default function Footer() {
                             </a>
                         </li>
                     </ul>
+                </div>
+            </div>
+
+            <div aria-hidden="true" className="pointer-events-none relative h-32 overflow-hidden sm:h-40 lg:h-48">
+                <div className="absolute bottom-3 left-4 whitespace-nowrap font-display text-[4.5rem] font-black leading-none tracking-[-0.065em] text-white/[0.07] sm:text-[7rem] lg:bottom-4 lg:left-10 lg:text-[10rem]">
+                    GoStudyInAustralia
                 </div>
             </div>
 
