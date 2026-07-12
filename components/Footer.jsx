@@ -41,7 +41,7 @@ function FooterLinks({ title, links }) {
 
 export default function Footer() {
     return (
-        <footer className="relative mt-20 overflow-hidden bg-[#0c3529] text-white" data-testid="site-footer">
+        <footer className="relative overflow-hidden bg-[#0c3529] text-white" data-testid="site-footer">
             <div className="gsa-container relative z-10 grid grid-cols-1 gap-12 py-16 md:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1.35fr] lg:gap-10 lg:py-20">
                 <div className="max-w-sm">
                     <Link href="/" className="mb-5 inline-flex items-center gap-3" aria-label="GoStudyInAustralia home">
