@@ -19,6 +19,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { computeScore, EDUCATION_LEVELS } from "@/lib/scoring";
 import { calculateEmi } from "@/lib/emi";
+import { educationCompletionYear, educationTimeline, educationYears, isSchoolQualification, normaliseEducationTimeline } from "@/lib/educationTimeline";
+import { englishExamDateBounds, validateEnglishExamDate } from "@/lib/englishExamTimeline";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
 import { EMAIL_RE, isTenDigitPhone, validateCalculatorStep, validateCalculatorForm } from "@/lib/validation";
 import { POLICY_VERSIONS } from "@/lib/policies";
@@ -48,14 +50,6 @@ const createEmploymentRecord = () => ({
     status: "Not Applicable", employer: "", date_of_joining: "", last_working_day: "",
     currently_working: true, itr_filed: false, salary_mode: "Bank Transfer",
 });
-
-const educationTimeline = (dob, key) => {
-    const birthYear = new Date(dob).getFullYear();
-    if (!birthYear) return { min: 1950, max: CURRENT_YEAR };
-    const offsets = { y10: 15, y12: 17, graduate: 20, postgraduate: 22, phd: 25 };
-    const expected = birthYear + offsets[key];
-    return { min: expected - 3, max: Math.min(expected + 8, CURRENT_YEAR) };
-};
 
 const gradeFor = (obtained, total) => {
     const percentage = Number(total) > 0 ? (Number(obtained) / Number(total)) * 100 : null;
@@ -90,6 +84,7 @@ const INITIAL = {
         marks_total: "",
         start_year: "",
         end_year: "",
+        passout_year: "",
         has_backlogs: false,
         backlog_count: "",
         backlogs_cleared: true,
@@ -185,6 +180,30 @@ function Field({ label, children, hint, error, testId }) {
     );
 }
 
+function previousEducationEnd(education, key) {
+    const index = education.findIndex((level) => level.key === key);
+    const previousLevel = education.slice(0, index).filter((level) => level.applicable && educationCompletionYear(level)).at(-1);
+    return educationCompletionYear(previousLevel) || "";
+}
+
+function PassoutYearSelect({ level, dob, education, onChange }) {
+    const years = educationYears(educationTimeline(dob, level.key, "", previousEducationEnd(education, level.key)).passout);
+    const noEligibleYears = level.key === "y12"
+        ? "No valid 12th passout year is available for this DOB and 10th passout year."
+        : "No valid passout year is available for this date of birth.";
+
+    return (
+        <Select value={level.passout_year} onValueChange={onChange}>
+            <SelectTrigger data-testid={`select-edu_passout_${level.key}`}><SelectValue placeholder="Select passout year" /></SelectTrigger>
+            <SelectContent>
+                {years.length > 0
+                    ? years.map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)
+                    : <p className="px-2 py-1.5 text-sm text-muted-foreground">{noEligibleYears}</p>}
+            </SelectContent>
+        </Select>
+    );
+}
+
 function YesNo({ value, onChange, testId, yesLabel = "Yes", noLabel = "No" }) {
     return (
         <RadioGroup value={String(value)} onValueChange={(v) => onChange(v === "true")} className="flex gap-6">
@@ -228,18 +247,25 @@ export default function CalculatorClient({ today: initialToday }) {
     };
     const setDob = (dob) => {
         markTouched("dob");
-        setForm((f) => ({ ...f, dob, age: calcAge(dob) }));
+        setForm((f) => ({
+            ...f,
+            dob,
+            age: calcAge(dob),
+            education: normaliseEducationTimeline(f.education, dob),
+            exam_date: validateEnglishExamDate(f.exam_date, dob, f.english_test) ? "" : f.exam_date,
+            tentative_exam_date: validateEnglishExamDate(f.tentative_exam_date, dob, f.english_test, { tentative: true, today }) ? "" : f.tentative_exam_date,
+        }));
     };
 
     const updateEducation = (key, field, value) => {
         const errorKey = {
             stream: `edu_${key}_stream`, marks_obtained: `edu_${key}`, marks_total: `edu_${key}`,
-            start_year: `edu_${key}_start`, end_year: `edu_${key}_end`, backlog_count: `edu_${key}_bl`,
+            start_year: `edu_${key}_start`, end_year: `edu_${key}_end`, passout_year: `edu_${key}_passout`, backlog_count: `edu_${key}_bl`,
         }[field];
         if (errorKey) markTouched(errorKey);
         setForm((f) => ({
             ...f,
-            education: f.education.map((l) => (l.key === key ? { ...l, [field]: value } : l)),
+            education: normaliseEducationTimeline(f.education.map((l) => (l.key === key ? { ...l, [field]: value } : l)), f.dob),
         }));
     };
 
@@ -263,11 +289,10 @@ export default function CalculatorClient({ today: initialToday }) {
 
     const selectHighestQualification = (key) => {
         markTouched("highest_qualification");
-        setForm((f) => ({
-            ...f,
-            highest_qualification: key,
-            education: f.education.map((level, index) => ({ ...level, applicable: index <= EDUCATION_LEVELS.findIndex((item) => item.key === key) })),
-        }));
+        setForm((f) => {
+            const education = f.education.map((level, index) => ({ ...level, applicable: index <= EDUCATION_LEVELS.findIndex((item) => item.key === key) }));
+            return { ...f, highest_qualification: key, education: normaliseEducationTimeline(education, f.dob) };
+        });
     };
 
     const updateSponsorEmployment = (id, employment_type) => {
@@ -305,6 +330,9 @@ export default function CalculatorClient({ today: initialToday }) {
     }, [form, step, touched]);
 
     const progress = useMemo(() => ((step + 1) / STEPS.length) * 100, [step]);
+
+    const completedExamDateBounds = useMemo(() => englishExamDateBounds(form.dob, form.english_test, { today }), [form.dob, form.english_test, today]);
+    const tentativeExamDateBounds = useMemo(() => englishExamDateBounds(form.dob, form.english_test, { tentative: true, today }), [form.dob, form.english_test, today]);
 
     const emi = useMemo(
         () => calculateEmi(form.loan_amount_inr, form.annual_interest_rate, form.loan_tenure_years),
@@ -482,7 +510,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                         <div key={lvl.key} className="border border-border rounded-xl p-5" data-testid={`edu-card-${lvl.key}`}>
                                             <div className="mb-4"><span className="font-display font-bold text-secondary">{lvl.label}</span><p className="text-xs text-muted-foreground mt-1">Completed qualification</p></div>
                                                 <div className="grid md:grid-cols-3 gap-4">
-                                                    <Field label="Stream / Course" error={errors[`edu_${lvl.key}_stream`]} testId={`field-edu_stream_${lvl.key}`}>
+                                                    {!['y10', 'y12'].includes(lvl.key) && <Field label="Stream / Course" error={errors[`edu_${lvl.key}_stream`]} testId={`field-edu_stream_${lvl.key}`}>
                                                         <CoursePicker
                                                             courses={courseCatalog}
                                                             value={lvl.stream}
@@ -491,19 +519,29 @@ export default function CalculatorClient({ today: initialToday }) {
                                                             onOtherChange={(isOther) => setOtherCourseFields((current) => ({ ...current, [`edu_${lvl.key}_stream`]: isOther }))}
                                                             testId={`select-edu_stream_${lvl.key}`}
                                                         />
-                                                    </Field>
+                                                    </Field>}
                                                     <Field label="Marks obtained" error={errors[`edu_${lvl.key}`]} testId={`field-edu_marks_${lvl.key}`}>
                                                         <Input type="number" value={lvl.marks_obtained} onChange={(e) => updateEducation(lvl.key, "marks_obtained", e.target.value)} data-testid={`input-edu_marks_obtained_${lvl.key}`} />
                                                     </Field>
                                                     <Field label="Total marks" testId={`field-edu_total_${lvl.key}`}>
                                                         <Input type="number" value={lvl.marks_total} onChange={(e) => updateEducation(lvl.key, "marks_total", e.target.value)} placeholder="e.g. 100" data-testid={`input-edu_marks_total_${lvl.key}`} />
                                                     </Field>
+                                                    {isSchoolQualification(lvl.key) ? <Field label="Passout year" error={errors[`edu_${lvl.key}_passout`]} testId={`field-edu_passout_${lvl.key}`}>
+                                                        <PassoutYearSelect level={lvl} dob={form.dob} education={form.education} onChange={(value) => updateEducation(lvl.key, "passout_year", value)} />
+                                                    </Field> : <>
                                                     <Field label="Start year" error={errors[`edu_${lvl.key}_start`]} testId={`field-edu_start_${lvl.key}`}>
-                                                        <Input type="number" value={lvl.start_year} onChange={(e) => updateEducation(lvl.key, "start_year", e.target.value)} data-testid={`input-edu_start_${lvl.key}`} />
+                                                        <Select value={lvl.start_year} onValueChange={(value) => updateEducation(lvl.key, "start_year", value)}>
+                                                            <SelectTrigger data-testid={`select-edu_start_${lvl.key}`}><SelectValue placeholder="Select start year" /></SelectTrigger>
+                                                            <SelectContent>{educationYears(educationTimeline(form.dob, lvl.key, lvl.start_year, previousEducationEnd(form.education, lvl.key)).start).map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent>
+                                                        </Select>
                                                     </Field>
                                                     <Field label="End year" error={errors[`edu_${lvl.key}_end`]} testId={`field-edu_end_${lvl.key}`}>
-                                                        <Input type="number" min={educationTimeline(form.dob, lvl.key).min} max={educationTimeline(form.dob, lvl.key).max} value={lvl.end_year} onChange={(e) => updateEducation(lvl.key, "end_year", e.target.value)} placeholder={`${educationTimeline(form.dob, lvl.key).min}–${educationTimeline(form.dob, lvl.key).max}`} data-testid={`input-edu_end_${lvl.key}`} />
+                                                        <Select value={lvl.end_year} onValueChange={(value) => updateEducation(lvl.key, "end_year", value)}>
+                                                            <SelectTrigger data-testid={`select-edu_end_${lvl.key}`}><SelectValue placeholder="Select end year" /></SelectTrigger>
+                                                            <SelectContent>{educationYears(educationTimeline(form.dob, lvl.key, lvl.start_year, previousEducationEnd(form.education, lvl.key)).end).map((year) => <SelectItem key={year} value={year}>{year}</SelectItem>)}</SelectContent>
+                                                        </Select>
                                                     </Field>
+                                                    </>}
                                                     <div className="rounded-lg bg-muted px-4 py-3 text-sm"><p className="text-xs uppercase tracking-wider text-muted-foreground">Calculated result</p>{gradeFor(lvl.marks_obtained, lvl.marks_total) ? <p className="font-semibold text-secondary mt-1">{gradeFor(lvl.marks_obtained, lvl.marks_total).percentage}% · {gradeFor(lvl.marks_obtained, lvl.marks_total).grade}</p> : <p className="text-muted-foreground mt-1">Enter marks to calculate</p>}</div>
                                                     <Field label="Backlogs?" testId={`field-edu_bl_${lvl.key}`}>
                                                         <YesNo value={lvl.has_backlogs} onChange={(v) => updateEducation(lvl.key, "has_backlogs", v)} testId={`radio-edu_bl_${lvl.key}`} />
@@ -539,13 +577,13 @@ export default function CalculatorClient({ today: initialToday }) {
                                             </SelectContent>
                                         </Select>
                                     </Field>
-                                    {form.english_test === "Tentative" ? <Field label="Tentative exam date" error={errors.tentative_exam_date} testId="field-tentative_exam_date"><Input data-testid="input-tentative_exam_date" type="date" value={form.tentative_exam_date} onChange={(e) => set("tentative_exam_date", e.target.value)} min={today} /></Field> : (
+                                    {form.english_test === "Tentative" ? <Field label="Tentative exam date" error={errors.tentative_exam_date} testId="field-tentative_exam_date"><Input data-testid="input-tentative_exam_date" type="date" value={form.tentative_exam_date} onChange={(e) => set("tentative_exam_date", e.target.value)} min={tentativeExamDateBounds.min} /></Field> : (
                                         <>
                                             <Field label="Number of attempts" error={errors.exam_attempts} testId="field-exam_attempts">
                                                 <Input data-testid="input-exam_attempts" type="number" min="1" value={form.exam_attempts} onChange={(e) => set("exam_attempts", e.target.value)} />
                                             </Field>
                                             <Field label="Exam date" error={errors.exam_date} testId="field-exam_date">
-                                                <Input data-testid="input-exam_date" type="date" value={form.exam_date} onChange={(e) => set("exam_date", e.target.value)} max={today} />
+                                                <Input data-testid="input-exam_date" type="date" value={form.exam_date} onChange={(e) => set("exam_date", e.target.value)} min={completedExamDateBounds.min} max={completedExamDateBounds.max} />
                                             </Field>
                                             <Field label={`Listening (${form.english_test === "IELTS" ? "0–9 bands" : form.english_test === "PTE" ? "10–90" : form.english_test === "TOEFL" ? "0–30" : "10–160"})`} error={errors.listening} testId="field-listening">
                                                 <Input data-testid="input-listening" type="number" step={form.english_test === "IELTS" ? "0.5" : "1"} value={form.listening} onChange={(e) => set("listening", e.target.value)} />
@@ -965,9 +1003,9 @@ function CoursePicker({ courses, value, onChange, isOther, onOtherChange, testId
         <div className="space-y-2">
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
-                    <button type="button" data-testid={testId} className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-                        <span className={value && !isOther ? "truncate" : "text-muted-foreground"}>{isOther ? "Other course" : value || "Search and select a course"}</span>
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    <button type="button" data-testid={testId} className="flex h-9 w-full items-center rounded-md border border-input bg-background px-3 py-1 text-left text-sm leading-5 shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring">
+                        <span className={`min-w-0 flex-1 truncate leading-5 ${value && !isOther ? "" : "text-muted-foreground"}`}>{isOther ? "Other course" : value || "Search and select a course"}</span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 self-center opacity-50" />
                     </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
@@ -982,7 +1020,7 @@ function CoursePicker({ courses, value, onChange, isOther, onOtherChange, testId
                                         <span className="min-w-0"><span className="block truncate">{course.title}</span>{course.university && <span className="block truncate text-xs text-muted-foreground">{course.university}</span>}</span>
                                     </CommandItem>
                                 ))}
-                                <CommandItem forceMount value="Other course enter manually" onSelect={() => { onOtherChange(true); onChange(""); setOpen(false); }}>
+                                <CommandItem forceMount className="min-h-9 whitespace-nowrap leading-5" value="Other course enter manually" onSelect={() => { onOtherChange(true); onChange(""); setOpen(false); }}>
                                     Other course — enter manually
                                 </CommandItem>
                             </CommandGroup>
@@ -990,7 +1028,19 @@ function CoursePicker({ courses, value, onChange, isOther, onOtherChange, testId
                     </Command>
                 </PopoverContent>
             </Popover>
-            {isOther && <Input data-testid={`${testId}-other`} value={value} onChange={(event) => onChange(event.target.value)} placeholder="Enter your course name" />}
+            {isOther && (
+                <Input
+                    autoFocus
+                    className="h-9 bg-background px-3 py-1 text-sm leading-5 text-foreground caret-foreground"
+                    data-testid={`${testId}-other`}
+                    value={value ?? ""}
+                    onChange={(event) => {
+                        onOtherChange(true);
+                        onChange(event.target.value);
+                    }}
+                    placeholder="Enter your course name"
+                />
+            )}
         </div>
     );
 }

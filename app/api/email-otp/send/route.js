@@ -19,7 +19,15 @@ export async function POST(request) {
             html: `<p>Your verification code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${otp.code}</p><p>This code expires in 10 minutes. Do not share it with anyone.</p>`,
         }),
     });
-    if (!resendResponse.ok) return NextResponse.json({ error: "Could not send the verification email. Please try again." }, { status: 502 });
+    if (!resendResponse.ok) {
+    const errorText = await resendResponse.text();
+    console.log("Resend Error:", errorText);
+
+    return NextResponse.json(
+        { error: "Could not send the verification email. Please try again." },
+        { status: 502 }
+    );
+}
 
     const response = NextResponse.json({ sent: true });
     response.cookies.set(OTP_COOKIE, otp.cookieValue, otpCookieOptions(otp.maxAge));
