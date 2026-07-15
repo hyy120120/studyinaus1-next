@@ -38,3 +38,7 @@ Thumbs.db
 # Temporary files
 *.log
 *.tmp
+
+# Uploaded marksheets (permanent storage in public/uploads)
+# Comment this out if you WANT to commit uploads
+public/uploads/
