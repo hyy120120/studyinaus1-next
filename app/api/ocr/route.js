@@ -3,216 +3,65 @@ import Tesseract from 'tesseract.js';
 import sharp from 'sharp';
 import { processMarksheetData } from '../../../lib/ocr/ocrProcessor';
 
-/* ══════════════════════════════════════════════════════════════════════════
-   IMAGE PREPROCESSOR — Fixed for real-world marksheet photos
-══════════════════════════════════════════════════════════════════════════ */
+/* ── Image preprocessing — tuned for Indian board marksheets ─────────────── */
 const preprocessImage = async (buffer) => {
   try {
-    // Step 1: Get metadata safely
-    let metadata;
-    try {
-      metadata = await sharp(buffer).metadata();
-    } catch {
-      console.warn('Could not read metadata, using raw buffer');
-      return buffer;
-    }
+    // Step 1: Get image metadata
+    const metadata = await sharp(buffer).metadata();
+    console.log(`Image: ${metadata.width}x${metadata.height} ${metadata.format}`);
 
-    const originalW = metadata.width  || 1080;
-    const originalH = metadata.height || 1350;
-    console.log(`Original: ${originalW}x${originalH} ${metadata.format}`);
-
-    // Step 2: Decode to raw pixels first (avoids format issues)
-    let rawBuffer;
-    try {
-      rawBuffer = await sharp(buffer)
-        .rotate()              // Auto-rotate based on EXIF
-        .toColorspace('srgb')  // Normalize color space
-        .removeAlpha()         // Remove alpha channel if present
-        .toBuffer();
-    } catch {
-      rawBuffer = buffer;
-    }
-
-    // Step 3: Calculate safe target dimensions
-    // Minimum 2500px wide for good OCR, max 4000px to avoid memory issues
-    const targetW = Math.min(
-      Math.max(originalW * 2, 2500),
-      4000
-    );
-
-    console.log(`Target width: ${targetW}px`);
-
-    // Step 4: Main preprocessing pipeline
-    const processed = await sharp(rawBuffer)
-      // Resize with safe settings
-      .resize({
-        width              : targetW,
-        height             : undefined,  // maintain aspect ratio
-        fit                : 'inside',
-        withoutEnlargement : false,
-        kernel             : sharp.kernel.lanczos3,
-        fastShrinkOnLoad   : false,
-      })
+    const processed = await sharp(buffer)
+      // Upscale small images for better OCR
+      .resize(
+        Math.max(metadata.width  || 0, 2500),
+        Math.max(metadata.height || 0, 3000),
+        { fit: 'inside', withoutEnlargement: false }
+      )
       // Convert to grayscale
       .grayscale()
-      // Boost contrast for photos of documents
-      // (handles yellow/orange/coloured paper backgrounds)
-      .normalise()
-      // Increase contrast
-      .linear(1.8, -(128 * 0.8))
+      // Boost contrast for faded/coloured marksheets
+      .linear(1.4, -30)
+      // Normalize histogram
+      .normalize()
       // Sharpen text edges
-      .sharpen({
-        sigma : 2,
-        m1    : 2,
-        m2    : 0.5,
-        x1    : 2,
-        y2    : 10,
-        y3    : 20,
-      })
-      // Convert to PNG (lossless, better for OCR)
-      .png({
-        compressionLevel : 1,  // minimal compression = faster
-        adaptiveFiltering: true,
-      })
+      .sharpen({ sigma: 1.5, m1: 1.5, m2: 0.7 })
+      // Remove noise
+      .median(1)
       .toBuffer();
 
-    // Log result size
-    const resultMeta = await sharp(processed).metadata();
-    console.log(`Processed: ${resultMeta.width}x${resultMeta.height} png`);
-
     return processed;
-
   } catch (err) {
-    console.error('Preprocessing failed:', err.message);
-
-    // Last resort fallback — minimal processing
-    try {
-      return await sharp(buffer)
-        .grayscale()
-        .normalise()
-        .png()
-        .toBuffer();
-    } catch {
-      return buffer; // return original if all else fails
-    }
+    console.error('Preprocessing error:', err.message);
+    return buffer; // return original on failure
   }
 };
 
-/* ══════════════════════════════════════════════════════════════════════════
-   OCR RUNNER — with retry logic
-══════════════════════════════════════════════════════════════════════════ */
-const runOCR = async (imageBuffer, levelKey) => {
-  /*
-    Tesseract PSM modes:
-    3  = Fully automatic (default)
-    4  = Single column of text
-    6  = Uniform block of text ← best for marksheets
-    11 = Sparse text (grab what it can)
-    12 = Sparse text with OSD
-  */
-
-  // Config optimized for Indian marksheets
-  // DO NOT use char whitelist — it causes Tesseract to miss chars
-  const config = {
-    logger: (m) => {
-      if (m.status === 'recognizing text') {
-        const pct = Math.round(m.progress * 100);
-        process.stdout.write(`\rOCR [${levelKey}]: ${pct}%`);
-      }
-    },
-    // Page segmentation: assume single uniform block
-    tessedit_pageseg_mode      : '6',
-    // Improve number recognition
-    classify_bln_numeric_mode  : '1',
-    // Keep spaces between words
-    preserve_interword_spaces  : '1',
-    // Better accuracy (slower but worth it)
-    tessedit_ocr_engine_mode   : '1',
-  };
-
-  // First attempt — standard
-  let result = await Tesseract.recognize(imageBuffer, 'eng', config);
-  console.log(`\nFirst attempt confidence: ${result.data.confidence.toFixed(1)}%`);
-
-  // If confidence is very low, retry with different PSM
-  if (result.data.confidence < 50) {
-    console.log('Low confidence, retrying with PSM 4...');
-    try {
-      const retry = await Tesseract.recognize(imageBuffer, 'eng', {
-        ...config,
-        tessedit_pageseg_mode: '4',
-      });
-      console.log(`Retry confidence: ${retry.data.confidence.toFixed(1)}%`);
-
-      // Use whichever gave better confidence
-      if (retry.data.confidence > result.data.confidence) {
-        result = retry;
-      }
-    } catch {
-      console.warn('Retry failed, using first result');
-    }
-  }
-
-  // If still very low, try PSM 11 (sparse text)
-  if (result.data.confidence < 40) {
-    console.log('Still low confidence, trying PSM 11 (sparse)...');
-    try {
-      const sparse = await Tesseract.recognize(imageBuffer, 'eng', {
-        ...config,
-        tessedit_pageseg_mode: '11',
-      });
-      console.log(`Sparse confidence: ${sparse.data.confidence.toFixed(1)}%`);
-
-      if (sparse.data.confidence > result.data.confidence) {
-        result = sparse;
-      }
-    } catch {
-      console.warn('Sparse attempt failed');
-    }
-  }
-
-  return result;
-};
-
-/* ══════════════════════════════════════════════════════════════════════════
-   GENERATE FILENAME
-══════════════════════════════════════════════════════════════════════════ */
 const generateFileName = (levelKey) => {
   const ts  = Date.now();
   const rnd = Math.random().toString(36).substring(2, 8);
   return `${levelKey}_${ts}_${rnd}`;
 };
 
-/* ══════════════════════════════════════════════════════════════════════════
-   MAIN ROUTE HANDLER
-══════════════════════════════════════════════════════════════════════════ */
 export async function POST(request) {
   try {
     const formData = await request.formData();
     const file     = formData.get('document');
     const levelKey = formData.get('levelKey') || 'general';
 
-    /* ── Validation ────────────────────────────────────────────────────── */
+    /* ── Validation ─────────────────────────────────────────────────────── */
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file uploaded' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    const allowed = [
-      'image/jpeg', 'image/jpg', 'image/png',
-      'image/webp', 'image/tiff', 'image/bmp',
-      'application/pdf',
-    ];
+    const allowed = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
     if (!allowed.includes(file.type)) {
       return NextResponse.json(
-        { error: `Invalid file type: ${file.type}. Use JPEG, PNG, or PDF.` },
+        { error: 'Invalid file type. Only JPEG, PNG and PDF allowed.' },
         { status: 400 }
       );
     }
 
-    const maxMB = parseInt(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB || '15');
+    const maxMB = parseInt(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB || '10');
     if (file.size > maxMB * 1024 * 1024) {
       return NextResponse.json(
         { error: `File too large. Max ${maxMB} MB.` },
@@ -220,111 +69,82 @@ export async function POST(request) {
       );
     }
 
-    /* ── Read file ─────────────────────────────────────────────────────── */
     const bytes  = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    console.log(`\n${'─'.repeat(50)}`);
-    console.log(`File: ${file.name} | Size: ${(file.size/1024).toFixed(1)}KB | Type: ${file.type}`);
-    console.log(`Level: ${levelKey}`);
-
-    /* ── Optional Cloudinary upload ────────────────────────────────────── */
+    /* ── Optional: Upload to Cloudinary ─────────────────────────────────── */
     let fileUrl  = null;
     let publicId = null;
 
     if (
       process.env.CLOUDINARY_CLOUD_NAME &&
-      process.env.CLOUDINARY_API_KEY    &&
+      process.env.CLOUDINARY_API_KEY &&
       process.env.CLOUDINARY_API_SECRET
     ) {
       try {
         const { uploadToCloudinary } = await import('../../../lib/cloudinary');
-        const up = await uploadToCloudinary(
-          buffer, levelKey, generateFileName(levelKey)
-        );
-        fileUrl  = up.secure_url;
-        publicId = up.public_id;
-        console.log('Cloudinary upload:', fileUrl);
-      } catch (e) {
-        console.warn('Cloudinary upload skipped:', e.message);
+        const fileName    = generateFileName(levelKey);
+        const uploadResult = await uploadToCloudinary(buffer, levelKey, fileName);
+        fileUrl  = uploadResult.secure_url;
+        publicId = uploadResult.public_id;
+        console.log('✅ Cloudinary upload:', fileUrl);
+      } catch (uploadErr) {
+        console.warn('⚠️ Cloudinary upload failed:', uploadErr.message);
+        // Continue without upload — OCR still works
       }
     }
 
-    /* ── Preprocess image ──────────────────────────────────────────────── */
-    console.log('Preprocessing image...');
+    /* ── Preprocess image ────────────────────────────────────────────────── */
     const processedBuffer = await preprocessImage(buffer);
 
-    /* ── Run OCR ───────────────────────────────────────────────────────── */
-    console.log('Running OCR...');
-    const ocrResult    = await runOCR(processedBuffer, levelKey);
-    const { text, confidence } = ocrResult.data;
+    /* ── Run Tesseract OCR ───────────────────────────────────────────────── */
+    const {
+      data: { text, confidence },
+    } = await Tesseract.recognize(
+      processedBuffer,
+      'eng',   // English only — Gujarati text cleaned in ocrProcessor
+      {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            console.log(`OCR [${levelKey}]: ${Math.round(m.progress * 100)}%`);
+          }
+        },
+        // Tesseract page segmentation: 6 = assume uniform block of text
+        tessedit_pageseg_mode     : '6',
+        // Preserve more characters for Indian marksheets
+        tessedit_char_whitelist   :
+          'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz' +
+          '0123456789.,:-_/\\&()% \n\t',
+        // Improve number recognition
+        classify_bln_numeric_mode : '1',
+      }
+    );
 
-    console.log(`\nFinal confidence: ${confidence.toFixed(1)}%`);
+    console.log('OCR confidence:', confidence.toFixed(1) + '%');
+    console.log('Raw OCR text (first 500 chars):\n', text.substring(0, 500));
 
-    // Log cleaned text for debugging
-    const cleanedForLog = text
-      .replace(/[^\x20-\x7E\n]/g, '')   // printable ASCII only
-      .replace(/\n{3,}/g, '\n\n')
-      .substring(0, 800);
-    console.log('Extracted text (800 chars):\n' + cleanedForLog);
-
-    /* ── Parse OCR text ────────────────────────────────────────────────── */
-    console.log('\nParsing marksheet data...');
+    /* ── Parse OCR text ──────────────────────────────────────────────────── */
     const marksheetData = processMarksheetData(text);
 
-    console.log('Board:', marksheetData.board);
-    console.log('Subjects found:', marksheetData.subjects.length);
-    marksheetData.subjects.forEach(s => {
-      console.log(`  ${s.name}: ${s.obtainedMarks}/${s.maxMarks} (${s.percentage}%)`);
-    });
-    console.log('Total:', marksheetData.obtainedMarks, '/', marksheetData.totalMarks);
-    console.log('Percentage:', marksheetData.percentage + '%');
-    console.log(`${'─'.repeat(50)}\n`);
-
-    /* ── Warn if low confidence ────────────────────────────────────────── */
-    const warnings = [];
-    if (confidence < 60) {
-      warnings.push(
-        'OCR confidence is low. Please upload a clearer, well-lit image.'
-      );
-    }
-    if (marksheetData.subjects.length === 0) {
-      warnings.push(
-        'No subjects could be extracted. Please verify the image quality.'
-      );
-    }
+    console.log('Extracted subjects:', marksheetData.subjects.length);
+    console.log('Total marks:', marksheetData.totalMarks);
+    console.log('Obtained marks:', marksheetData.obtainedMarks);
 
     return NextResponse.json({
       success    : true,
       rawText    : text,
-      confidence : parseFloat(confidence.toFixed(2)),
+      confidence,
       levelKey,
       fileUrl,
       publicId,
-      warnings,
       data       : marksheetData,
     });
 
   } catch (error) {
-    console.error('\n❌ OCR Route Error:', error.message);
-    console.error(error.stack);
+    console.error('OCR Route Error:', error);
     return NextResponse.json(
-      {
-        error   : 'OCR processing failed',
-        message : error.message,
-      },
+      { error: 'OCR processing failed', message: error.message },
       { status: 500 }
     );
   }
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   HEALTH CHECK
-══════════════════════════════════════════════════════════════════════════ */
-export async function GET() {
-  return NextResponse.json({
-    status  : 'ok',
-    message : 'OCR API is running',
-    version : '3.0',
-  });
 }

@@ -75,7 +75,9 @@ import {
 } from "@/lib/validation";
 import { POLICY_VERSIONS } from "@/lib/policies";
 import { COURSES } from "@/data/courses";
-import MiniMarksheetScanner from '@/components/MarksheetOCR/MiniMarksheetScanner';
+import MiniMarksheetScanner from "@/components/MarksheetOCR/MiniMarksheetScanner";
+import UniversityPicker from "../university/UniversityPicker";
+import { australianUniversities } from "@/lib/data/australianUniversities";
 
 const STEPS = [
   "Personal Details",
@@ -177,7 +179,7 @@ const INITIAL = {
     has_backlogs: false,
     backlog_count: "",
     backlogs_cleared: true,
-    marksheet_url: '',
+    marksheet_url: "",
   })),
 
   // English
@@ -858,13 +860,10 @@ export default function CalculatorClient({ today: initialToday }) {
                       label="Intended university (optional)"
                       testId="field-intended_university"
                     >
-                      <Input
-                        data-testid="input-intended_university"
+                      <UniversityPicker
+                        universities={australianUniversities}
                         value={form.intended_university}
-                        onChange={(e) =>
-                          set("intended_university", e.target.value)
-                        }
-                        placeholder="UNSW Sydney"
+                        onChange={(value) => set("intended_university", value)}
                       />
                     </Field>
                     <div className="md:col-span-2">
@@ -874,7 +873,7 @@ export default function CalculatorClient({ today: initialToday }) {
                         testId="field-intended_course"
                       >
                         <CoursePicker
-                          courses={courseCatalog}
+                          courses={COURSES}
                           value={form.intended_course}
                           onChange={(value) => set("intended_course", value)}
                           isOther={Boolean(otherCourseFields.intended_course)}
