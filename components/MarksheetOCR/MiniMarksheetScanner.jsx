@@ -238,7 +238,7 @@ const MiniMarksheetScanner = ({ levelKey, levelLabel, onDataExtracted }) => {
                  1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          📷 Scan {levelLabel} Marksheet — Auto-fill marks
+           Scan {levelLabel} Marksheet — Auto-fill marks
         </button>
       )}
 
@@ -257,7 +257,7 @@ const MiniMarksheetScanner = ({ levelKey, levelLabel, onDataExtracted }) => {
               )}
               <div>
                 <p className="text-xs font-semibold text-green-700">
-                  ✅ Marksheet Scanned
+                   Marksheet Scanned
                   {state.board && (
                     <span className="ml-1 font-normal text-green-600">
                       ({state.board})
@@ -326,7 +326,7 @@ const MiniMarksheetScanner = ({ levelKey, levelLabel, onDataExtracted }) => {
             bg-gradient-to-r from-blue-600 to-indigo-600"
           >
             <p className="text-white text-sm font-semibold">
-              📄 Scan {levelLabel} Marksheet
+               Scan {levelLabel} Marksheet
             </p>
             <button type="button" onClick={toggle}
               className="text-white/70 hover:text-white text-lg leading-none"
@@ -461,7 +461,7 @@ const MiniMarksheetScanner = ({ levelKey, levelLabel, onDataExtracted }) => {
                 rounded-lg p-3"
               >
                 <p className="text-xs font-semibold text-amber-800 mb-1.5">
-                  📋 Tips for best accuracy:
+                   Tips for best accuracy:
                 </p>
                 <ul className="text-xs text-amber-700 space-y-1
                   list-disc list-inside"
