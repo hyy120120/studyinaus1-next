@@ -1,0 +1,779 @@
+diff --git a/app/api/upload/route.js b/app/api/upload/route.js
+new file mode 100644
+index 0000000..273b83f
+--- /dev/null
++++ b/app/api/upload/route.js
+@@ -0,0 +1,73 @@
++import { NextResponse } from "next/server";
++
++// Generic document upload endpoint — stores files in Cloudinary.
++// Used by the visa calculator for sponsor income-proof documents.
++// The marksheet OCR flow has its own route (app/api/ocr/route.js).
++
++const ALLOWED_TYPES = [
++    "image/jpeg",
++    "image/jpg",
++    "image/png",
++    "application/pdf",
++];
++const MAX_MB = 10;
++
++export async function POST(request) {
++    try {
++        const { isCloudinaryConfigured, uploadToCloudinary } = await import(
++            "../../../lib/cloudinary"
++        );
++
++        if (!isCloudinaryConfigured) {
++            return NextResponse.json(
++                {
++                    error: "Document storage is not configured. Set the CLOUDINARY_* environment variables.",
++                },
++                { status: 503 },
++            );
++        }
++
++        const formData = await request.formData();
++        const file = formData.get("document");
++        const folder =
++            String(formData.get("folder") || "documents").replace(
++                /[^\w-]+/g,
++                "_",
++            ) || "documents";
++
++        if (!file) {
++            return NextResponse.json(
++                { error: "No file uploaded" },
++                { status: 400 },
++            );
++        }
++        if (!ALLOWED_TYPES.includes(file.type)) {
++            return NextResponse.json(
++                { error: "Invalid file type. Only JPEG, PNG and PDF allowed." },
++                { status: 400 },
++            );
++        }
++        if (file.size > MAX_MB * 1024 * 1024) {
++            return NextResponse.json(
++                { error: `File too large. Max ${MAX_MB} MB.` },
++                { status: 400 },
++            );
++        }
++
++        const buffer = Buffer.from(await file.arrayBuffer());
++        const fileName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
++        const result = await uploadToCloudinary(buffer, folder, fileName);
++
++        return NextResponse.json({
++            success: true,
++            fileUrl: result.secure_url,
++            publicId: result.public_id,
++        });
++    } catch (error) {
++        console.error("Upload route error:", error);
++        return NextResponse.json(
++            { error: "Upload failed", message: error.message },
++            { status: 500 },
++        );
++    }
++}
+diff --git a/components/calculator/CalculatorClient.jsx b/components/calculator/CalculatorClient.jsx
+index 0d12f6b..4d0de05 100644
+--- a/components/calculator/CalculatorClient.jsx
++++ b/components/calculator/CalculatorClient.jsx
+@@ -14,6 +14,8 @@ import {
+   ChevronsUpDown,
+   Mail,
+   ShieldCheck,
++  Upload,
++  FileText,
+ } from "lucide-react";
+ import { toast } from "sonner";
+ import {
+@@ -149,6 +151,61 @@ const gradeFor = (obtained, total) => {
+   return { percentage: percentage.toFixed(1), grade };
+ };
+ 
++// ── Intended-course level filtering ─────────────────────────────────────────
++// Courses carry no explicit level field, so the level is detected from the
++// course title. Titles that match nothing (level === null) are always shown,
++// so admin-managed courses never disappear silently.
++const COURSE_LEVEL_PATTERNS = [
++  { level: "doctorate", pattern: /(ph\.?\s?d|doctorate|doctoral)/i },
++  {
++    level: "postgraduate",
++    pattern:
++      /(master|mba|m\.?\s?sc|m\.?\s?tech|m\.?\s?e\b|mphil|postgraduate|graduate\s+(certificate|diploma)|pg\s?dip)/i,
++  },
++  {
++    level: "undergraduate",
++    pattern:
++      /(bachelor|b\.?\s?sc|b\.?\s?tech|b\.?\s?e\b|bba|bca|b\.?\s?com|undergraduate|associate degree)/i,
++  },
++  { level: "diploma", pattern: /(diploma|certificate|foundation)/i },
++];
++
++const detectCourseLevel = (title = "") => {
++  for (const { level, pattern } of COURSE_LEVEL_PATTERNS) {
++    if (pattern.test(title)) return level;
++  }
++  return null;
++};
++
++// Which course levels make sense as the *next* step for each completed
++// qualification (keys from EDUCATION_LEVELS).
++const COURSE_LEVELS_AFTER = {
++  y10: ["undergraduate", "diploma"],
++  y12: ["undergraduate", "diploma"],
++  graduate: ["postgraduate", "doctorate"],
++  postgraduate: ["postgraduate", "doctorate"],
++  phd: null, // PhD holders can aim anywhere — no filter
++};
++
++const QUALIFICATION_LEVEL_HINT = {
++  y10: "Showing Bachelor / diploma-level courses — the usual next step after 10th.",
++  y12: "Showing Bachelor-level courses — the usual next step after 12th.",
++  graduate:
++    "Showing Master / PhD-level courses — the usual next step after graduation.",
++  postgraduate: "Showing Master / PhD-level courses.",
++};
++
++const filterCoursesForQualification = (courses, qualificationKey) => {
++  const allowed = COURSE_LEVELS_AFTER[qualificationKey];
++  if (!allowed) return courses;
++  return courses.filter((course) => {
++    const level = detectCourseLevel(course.title);
++    return level === null || allowed.includes(level);
++  });
++};
++
++const ACCEPT_DOC_UPLOAD = ".pdf,.jpg,.jpeg,.png";
++
+ const INITIAL = {
+   // Personal
+   first_name: "",
+@@ -225,6 +282,8 @@ const INITIAL = {
+   employment_records: [createEmploymentRecord()],
+   work_relevant_to_course: false,
+   work_verification_done: false,
++  work_verification_contact_phone: "",
++  work_verification_contact_email: "",
+ 
+   // Visa & loan
+   course_in_line_with_previous_education: true,
+@@ -371,6 +430,7 @@ export default function CalculatorClient({ today: initialToday }) {
+   const [today, setToday] = useState(initialToday);
+   const [managedCourses, setManagedCourses] = useState(null);
+   const [otherCourseFields, setOtherCourseFields] = useState({});
++  const [docUploading, setDocUploading] = useState({});
+   const [calculatorUnlocked, setCalculatorUnlocked] = useState(false);
+ 
+   useEffect(() => {
+@@ -500,6 +560,8 @@ export default function CalculatorClient({ today: initialToday }) {
+                 status: "",
+                 year_established: "",
+                 remarks: "",
++                file_url: "",
++                file_name: "",
+               })),
+             }
+           : s,
+@@ -511,7 +573,9 @@ export default function CalculatorClient({ today: initialToday }) {
+     markTouched(
+       field === "year_established"
+         ? `sponsor_doc_year_${id}_${docKey}`
+-        : `sponsor_doc_${id}_${docKey}`,
++        : field === "file_url"
++          ? `sponsor_doc_file_${id}_${docKey}`
++          : `sponsor_doc_${id}_${docKey}`,
+     );
+     setForm((f) => ({
+       ...f,
+@@ -528,6 +592,34 @@ export default function CalculatorClient({ today: initialToday }) {
+     }));
+   };
+ 
++  const uploadSponsorDocument = async (sponsorId, docKey, file) => {
++    if (!file) return;
++    if (file.size > 10 * 1024 * 1024) {
++      toast.error("File too large — maximum 10 MB.");
++      return;
++    }
++    const uploadKey = `${sponsorId}_${docKey}`;
++    setDocUploading((current) => ({ ...current, [uploadKey]: true }));
++    try {
++      // Documents are stored in Cloudinary (see app/api/upload/route.js).
++      const body = new FormData();
++      body.append("document", file);
++      body.append("folder", "sponsor_documents");
++      const response = await fetch("/api/upload", { method: "POST", body });
++      const result = await response.json().catch(() => ({}));
++      if (!response.ok || !result.fileUrl) {
++        throw new Error(result.error || "Upload failed. Please try again.");
++      }
++      updateSponsorDoc(sponsorId, docKey, "file_url", result.fileUrl);
++      updateSponsorDoc(sponsorId, docKey, "file_name", file.name);
++      toast.success(`${file.name} uploaded.`);
++    } catch (error) {
++      toast.error(error?.message || "Upload failed. Please try again.");
++    } finally {
++      setDocUploading((current) => ({ ...current, [uploadKey]: false }));
++    }
++  };
++
+   const totalSponsorIncome = useMemo(
+     () =>
+       form.sponsors
+@@ -552,6 +644,14 @@ export default function CalculatorClient({ today: initialToday }) {
+     [managedCourses],
+   );
+ 
++  // Intended-course list adapts to the highest completed qualification:
++  // 10th/12th → Bachelor-level courses, Graduation → Master/PhD-level courses.
++  const intendedCourseCatalog = useMemo(
++    () => filterCoursesForQualification(courseCatalog, form.highest_qualification),
++    [courseCatalog, form.highest_qualification],
++  );
++  const courseLevelHint = QUALIFICATION_LEVEL_HINT[form.highest_qualification];
++
+   useEffect(() => {
+     if (Object.keys(touched).length === 0) return;
+     const stepErrors = validateCalculatorStep(step, form);
+@@ -869,11 +969,12 @@ export default function CalculatorClient({ today: initialToday }) {
+                     <div className="md:col-span-2">
+                       <Field
+                         label="Intended course"
++                        hint={courseLevelHint}
+                         error={errors.intended_course}
+                         testId="field-intended_course"
+                       >
+                         <CoursePicker
+-                          courses={COURSES}
++                          courses={intendedCourseCatalog}
+                           value={form.intended_course}
+                           onChange={(value) => set("intended_course", value)}
+                           isOther={Boolean(otherCourseFields.intended_course)}
+@@ -1585,71 +1686,167 @@ export default function CalculatorClient({ today: initialToday }) {
+                             {sp.docs.map((doc) => (
+                               <div
+                                 key={doc.key}
+-                                className="rounded-lg bg-muted p-4 grid md:grid-cols-3 gap-4"
++                                className="rounded-lg bg-muted p-4 grid md:grid-cols-2 gap-4"
+                               >
+-                                <Field
+-                                  label={doc.label}
+-                                  error={
+-                                    errors[`sponsor_doc_${sp.id}_${doc.key}`]
+-                                  }
+-                                >
+-                                  <Select
+-                                    value={doc.status}
+-                                    onValueChange={(v) =>
+-                                      updateSponsorDoc(
+-                                        sp.id,
+-                                        doc.key,
+-                                        "status",
+-                                        v,
+-                                      )
++                                {/* Left column — status (+ year when relevant) */}
++                                <div className="space-y-4">
++                                  <Field
++                                    label={`${doc.label} — do you have it?`}
++                                    error={
++                                      errors[`sponsor_doc_${sp.id}_${doc.key}`]
+                                     }
+                                   >
+-                                    <SelectTrigger>
+-                                      <SelectValue placeholder="Document status" />
+-                                    </SelectTrigger>
+-                                    <SelectContent>
+-                                      <SelectItem value="yes">Yes</SelectItem>
+-                                      <SelectItem value="no">No</SelectItem>
+-                                    </SelectContent>
+-                                  </Select>
+-                                </Field>
+-                                {doc.year_required && (
++                                    <Select
++                                      value={doc.status}
++                                      onValueChange={(v) =>
++                                        updateSponsorDoc(
++                                          sp.id,
++                                          doc.key,
++                                          "status",
++                                          v,
++                                        )
++                                      }
++                                    >
++                                      <SelectTrigger>
++                                        <SelectValue placeholder="Document status" />
++                                      </SelectTrigger>
++                                      <SelectContent>
++                                        <SelectItem value="yes">
++                                          Yes, I have it
++                                        </SelectItem>
++                                        <SelectItem value="no">
++                                          No, not available
++                                        </SelectItem>
++                                      </SelectContent>
++                                    </Select>
++                                  </Field>
++                                  {doc.year_required && doc.status === "yes" && (
++                                    <Field
++                                      label="Year established"
++                                      error={
++                                        errors[
++                                          `sponsor_doc_year_${sp.id}_${doc.key}`
++                                        ]
++                                      }
++                                    >
++                                      <Input
++                                        type="number"
++                                        value={doc.year_established}
++                                        onChange={(e) =>
++                                          updateSponsorDoc(
++                                            sp.id,
++                                            doc.key,
++                                            "year_established",
++                                            e.target.value,
++                                          )
++                                        }
++                                      />
++                                    </Field>
++                                  )}
++                                </div>
++
++                                {/* Right column — upload when Yes, note when No */}
++                                {doc.status === "yes" ? (
+                                   <Field
+-                                    label="Year established"
++                                    label="Upload document"
+                                     error={
+                                       errors[
+-                                        `sponsor_doc_year_${sp.id}_${doc.key}`
++                                        `sponsor_doc_file_${sp.id}_${doc.key}`
+                                       ]
+                                     }
+                                   >
+-                                    <Input
+-                                      type="number"
+-                                      value={doc.year_established}
++                                    {docUploading[`${sp.id}_${doc.key}`] ? (
++                                      <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted-foreground">
++                                        <Loader2
++                                          size={16}
++                                          className="animate-spin"
++                                        />
++                                        Uploading…
++                                      </div>
++                                    ) : doc.file_url ? (
++                                      <div
++                                        className="flex items-center gap-3 rounded-md border border-border bg-white px-3 py-2"
++                                        data-testid={`doc-file-${sp.id}-${doc.key}`}
++                                      >
++                                        <FileText
++                                          size={16}
++                                          className="shrink-0 text-primary"
++                                        />
++                                        <span className="min-w-0 flex-1 truncate text-sm text-secondary">
++                                          {doc.file_name || "Document saved"}
++                                        </span>
++                                        <a
++                                          href={doc.file_url}
++                                          target="_blank"
++                                          rel="noopener noreferrer"
++                                          className="shrink-0 text-sm font-medium text-primary underline"
++                                        >
++                                          View
++                                        </a>
++                                        <button
++                                          type="button"
++                                          className="shrink-0 text-sm font-medium text-destructive"
++                                          onClick={() => {
++                                            updateSponsorDoc(
++                                              sp.id,
++                                              doc.key,
++                                              "file_url",
++                                              "",
++                                            );
++                                            updateSponsorDoc(
++                                              sp.id,
++                                              doc.key,
++                                              "file_name",
++                                              "",
++                                            );
++                                          }}
++                                        >
++                                          Remove
++                                        </button>
++                                      </div>
++                                    ) : (
++                                      <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-white px-3 text-sm font-medium text-secondary transition-colors hover:border-primary/50 hover:bg-primary/5">
++                                        <Upload size={16} />
++                                        Upload PDF / JPG / PNG
++                                        <input
++                                          type="file"
++                                          className="hidden"
++                                          accept={ACCEPT_DOC_UPLOAD}
++                                          onChange={(e) => {
++                                            const file = e.target.files?.[0];
++                                            e.target.value = "";
++                                            if (file)
++                                              uploadSponsorDocument(
++                                                sp.id,
++                                                doc.key,
++                                                file,
++                                              );
++                                          }}
++                                        />
++                                      </label>
++                                    )}
++                                  </Field>
++                                ) : doc.status === "no" ? (
++                                  <Field label="Remark / note">
++                                    <Textarea
++                                      value={doc.remarks}
+                                       onChange={(e) =>
+                                         updateSponsorDoc(
+                                           sp.id,
+                                           doc.key,
+-                                          "year_established",
++                                          "remarks",
+                                           e.target.value,
+                                         )
+                                       }
++                                      placeholder="Why is it not available? e.g. waiting for bank statement"
+                                     />
+                                   </Field>
++                                ) : (
++                                  <p className="self-end pb-2 text-xs text-muted-foreground">
++                                    Select Yes to upload the document, or No to
++                                    leave a note.
++                                  </p>
+                                 )}
+-                                <Field label="Remarks">
+-                                  <Textarea
+-                                    value={doc.remarks}
+-                                    onChange={(e) =>
+-                                      updateSponsorDoc(
+-                                        sp.id,
+-                                        doc.key,
+-                                        "remarks",
+-                                        e.target.value,
+-                                      )
+-                                    }
+-                                    placeholder="Optional notes"
+-                                  />
+-                                </Field>
+                               </div>
+                             ))}
+                           </div>
+@@ -1666,7 +1863,7 @@ export default function CalculatorClient({ today: initialToday }) {
+               {/* STEP 4 — WORK DETAILS */}
+               {step === 4 && (
+                 <div className="space-y-8">
+-                  <div className="grid md:grid-cols-2 gap-6 pb-2 border-b border-border">
++                  <div className="space-y-5 pb-6 border-b border-border">
+                     <Field label="Is your work experience relevant to the intended course?">
+                       <YesNo
+                         value={form.work_relevant_to_course}
+@@ -1677,10 +1874,65 @@ export default function CalculatorClient({ today: initialToday }) {
+                     <Field label="Can this employment be independently verified?">
+                       <YesNo
+                         value={form.work_verification_done}
+-                        onChange={(v) => set("work_verification_done", v)}
++                        onChange={(v) => {
++                          set("work_verification_done", v);
++                          if (!v) {
++                            setForm((f) => ({
++                              ...f,
++                              work_verification_contact_phone: "",
++                              work_verification_contact_email: "",
++                            }));
++                          }
++                        }}
+                         testId="radio-work_verification_done"
+                       />
+                     </Field>
++                    {form.work_verification_done && (
++                      <div
++                        className="grid md:grid-cols-2 gap-5 rounded-xl border border-border bg-muted/40 p-4 md:p-5"
++                        data-testid="work-verification-contact-fields"
++                      >
++                        <Field
++                          label="Verification contact phone"
++                          hint="Employer / HR number we can call to verify"
++                          error={errors.work_verification_contact_phone}
++                          testId="field-work_verification_contact_phone"
++                        >
++                          <Input
++                            data-testid="input-work_verification_contact_phone"
++                            inputMode="numeric"
++                            maxLength={10}
++                            value={form.work_verification_contact_phone}
++                            onChange={(e) =>
++                              set(
++                                "work_verification_contact_phone",
++                                e.target.value.replace(/\D/g, "").slice(0, 10),
++                              )
++                            }
++                            placeholder="10-digit phone number"
++                          />
++                        </Field>
++                        <Field
++                          label="Verification contact email"
++                          hint="Employer / HR email we can write to"
++                          error={errors.work_verification_contact_email}
++                          testId="field-work_verification_contact_email"
++                        >
++                          <Input
++                            data-testid="input-work_verification_contact_email"
++                            type="email"
++                            value={form.work_verification_contact_email}
++                            onChange={(e) =>
++                              set(
++                                "work_verification_contact_email",
++                                e.target.value,
++                              )
++                            }
++                            placeholder="hr@company.com"
++                          />
++                        </Field>
++                      </div>
++                    )}
+                   </div>
+                   <div className="space-y-5">
+                     {form.employment_records.map((record, index) => (
+@@ -2365,7 +2617,7 @@ export default function CalculatorClient({ today: initialToday }) {
+ 
+               {/* STEP 6 — MARITAL DETAILS */}
+               {step === 3 && (
+-                <div className="grid md:grid-cols-2 gap-6">
++                <div className="grid md:grid-cols-2 gap-6 items-start">
+                   <Field
+                     label="Is the student married?"
+                     error={errors.is_married}
+@@ -2389,7 +2641,17 @@ export default function CalculatorClient({ today: initialToday }) {
+                           testId="radio-has_child"
+                         />
+                       </Field>
+-                      {form.has_child && (
++                      {/*
++                        The child-count cell always keeps its grid slot:
++                        invisible-but-present on desktop when not applicable,
++                        so toggling Yes/No never shifts the surrounding fields.
++                      */}
++                      <div
++                        className={
++                          form.has_child ? "" : "hidden md:block md:invisible"
++                        }
++                        aria-hidden={!form.has_child}
++                      >
+                         <Field
+                           label="Number of children"
+                           error={errors.child_count}
+@@ -2398,11 +2660,12 @@ export default function CalculatorClient({ today: initialToday }) {
+                           <Input
+                             type="number"
+                             min="1"
++                            disabled={!form.has_child}
+                             value={form.child_count}
+                             onChange={(e) => set("child_count", e.target.value)}
+                           />
+                         </Field>
+-                      )}
++                      </div>
+                       <Field
+                         label="Spouse will accompany?"
+                         testId="field-spouse_will_accompany"
+diff --git a/components/ui/command.jsx b/components/ui/command.jsx
+index d27d8a5..1944672 100644
+--- a/components/ui/command.jsx
++++ b/components/ui/command.jsx
+@@ -51,7 +51,8 @@ CommandInput.displayName = CommandPrimitive.Input.displayName
+ const CommandList = React.forwardRef(({ className, ...props }, ref) => (
+   <CommandPrimitive.List
+     ref={ref}
+-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
++    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden overscroll-contain", className)}
++    data-lenis-prevent
+     {...props} />
+ ))
+ 
+diff --git a/components/ui/select.jsx b/components/ui/select.jsx
+index 827bdf7..a6b5695 100644
+--- a/components/ui/select.jsx
++++ b/components/ui/select.jsx
+@@ -53,12 +53,13 @@ const SelectContent = React.forwardRef(({ className, children, position = "poppe
+     <SelectPrimitive.Content
+       ref={ref}
+       className={cn(
+-        "relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-select-content-transform-origin]",
++        "relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] overflow-y-auto overflow-x-hidden overscroll-contain rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-select-content-transform-origin]",
+         position === "popper" &&
+           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+         className
+       )}
+       position={position}
++      data-lenis-prevent
+       {...props}>
+       <SelectScrollUpButton />
+       <SelectPrimitive.Viewport
+diff --git a/components/university/UniversityPicker.jsx b/components/university/UniversityPicker.jsx
+index 6891f11..9a0311a 100644
+--- a/components/university/UniversityPicker.jsx
++++ b/components/university/UniversityPicker.jsx
+@@ -10,6 +10,7 @@ import {
+   CommandGroup,
+   CommandInput,
+   CommandItem,
++  CommandList,
+ } from "@/components/ui/command";
+ 
+ import {
+@@ -52,30 +53,35 @@ export default function UniversityPicker({
+         <Command>
+           <CommandInput placeholder="Search university..." />
+ 
+-          <CommandEmpty>No university found.</CommandEmpty>
++          {/* CommandList is the independently scrollable region.
++              data-lenis-prevent/overscroll-contain (set in ui/command) keep
++              wheel events inside the dropdown instead of scrolling the page. */}
++          <CommandList className="max-h-72">
++            <CommandEmpty>No university found.</CommandEmpty>
+ 
+-          <CommandGroup className="max-h-72 overflow-y-auto">
+-            {list.map((university) => (
+-              <CommandItem
+-                key={university}
+-                value={university}
+-                onSelect={() => {
+-                  onChange(university);
+-                  setOpen(false);
+-                }}
+-              >
+-                <Check
+-                  className={cn(
+-                    "mr-2 h-4 w-4",
+-                    value === university ? "opacity-100" : "opacity-0"
+-                  )}
+-                />
+-                {university}
+-              </CommandItem>
+-            ))}
+-          </CommandGroup>
++            <CommandGroup>
++              {list.map((university) => (
++                <CommandItem
++                  key={university}
++                  value={university}
++                  onSelect={() => {
++                    onChange(university);
++                    setOpen(false);
++                  }}
++                >
++                  <Check
++                    className={cn(
++                      "mr-2 h-4 w-4",
++                      value === university ? "opacity-100" : "opacity-0"
++                    )}
++                  />
++                  {university}
++                </CommandItem>
++              ))}
++            </CommandGroup>
++          </CommandList>
+         </Command>
+       </PopoverContent>
+     </Popover>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/lib/cloudinary.js b/lib/cloudinary.js
+new file mode 100644
+index 0000000..6621e2e
+--- /dev/null
++++ b/lib/cloudinary.js
+@@ -0,0 +1,44 @@
++// Server-side Cloudinary helper.
++//
++// Used by:
++//   • app/api/ocr/route.js    — stores marksheet scans (folder = level key)
++//   • app/api/upload/route.js — stores sponsor income-proof documents
++//
++// Configure via environment variables (server-only — never expose the API
++// secret through NEXT_PUBLIC_*):
++//   CLOUDINARY_CLOUD_NAME=...
++//   CLOUDINARY_API_KEY=...
++//   CLOUDINARY_API_SECRET=...
++
++import { v2 as cloudinary } from "cloudinary";
++
++cloudinary.config({
++    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
++    api_key: process.env.CLOUDINARY_API_KEY,
++    api_secret: process.env.CLOUDINARY_API_SECRET,
++    secure: true,
++});
++
++export const isCloudinaryConfigured = Boolean(
++    process.env.CLOUDINARY_CLOUD_NAME &&
++    process.env.CLOUDINARY_API_KEY &&
++    process.env.CLOUDINARY_API_SECRET,
++);
++
++// Uploads a Buffer and resolves with the Cloudinary result
++// ({ secure_url, public_id, ... }). Files land under gsa/<folder>/<fileName>.
++export function uploadToCloudinary(buffer, folder, fileName) {
++    return new Promise((resolve, reject) => {
++        const stream = cloudinary.uploader.upload_stream(
++            {
++                folder: `gsa/${folder}`,
++                public_id: fileName,
++                resource_type: "auto",
++            },
++            (error, result) => (error ? reject(error) : resolve(result)),
++        );
++        stream.end(buffer);
++    });
++}
++
++export default cloudinary;
+diff --git a/lib/validation.js b/lib/validation.js
+index fdb8eec..c9b0250 100644
+--- a/lib/validation.js
++++ b/lib/validation.js
+@@ -162,6 +162,7 @@ export function validateCalculatorStep(step, form) {
+             (s.docs || []).forEach((doc) => {
+                 if (!doc.status) errors[`sponsor_doc_${s.id}_${doc.key}`] = `Mark whether ${doc.label} is available.`;
+                 if (doc.year_required && doc.status === "yes") errors[`sponsor_doc_year_${s.id}_${doc.key}`] = inRange(doc.year_established, 1950, new Date().getFullYear(), `${doc.label} year established`);
++                if (doc.status === "yes" && !doc.file_url) errors[`sponsor_doc_file_${s.id}_${doc.key}`] = `Upload the ${doc.label} file, or mark it as No and add a note.`;
+             });
+         });
+     }
+@@ -173,6 +174,13 @@ export function validateCalculatorStep(step, form) {
+                 errors[`employment_${record.id}_joining`] = required(record.date_of_joining, "Enter the date of joining.");
+             }
+         });
++        if (form.work_verification_done === true) {
++            // Note: plain EMAIL_RE (not isEmail) — employer HR contacts usually
++            // sit on company domains, which the "standard provider" rule rejects.
++            errors.work_verification_contact_phone = required(form.work_verification_contact_phone, "Enter the verification contact phone number.") || isTenDigitPhone(form.work_verification_contact_phone);
++            errors.work_verification_contact_email = required(form.work_verification_contact_email, "Enter the verification contact email.")
++                || (EMAIL_RE.test(String(form.work_verification_contact_email || "").trim()) ? null : "Enter a valid email address.");
++        }
+     }
+ 
+     if (step === 5) {
+diff --git a/package.json b/package.json
+index a0a5949..57ba0a6 100644
+--- a/package.json
++++ b/package.json
+@@ -38,6 +38,7 @@
+     "@radix-ui/react-toggle-group": "^1.1.7",
+     "@radix-ui/react-tooltip": "^1.2.4",
+     "class-variance-authority": "^0.7.1",
++    "cloudinary": "^2.10.0",
+     "clsx": "^2.1.1",
+     "cmdk": "^1.1.1",
+     "date-fns": "^3.6.0",
