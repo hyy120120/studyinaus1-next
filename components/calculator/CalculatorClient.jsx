@@ -14,6 +14,8 @@ import {
   ChevronsUpDown,
   Mail,
   ShieldCheck,
+  Upload,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -149,6 +151,61 @@ const gradeFor = (obtained, total) => {
   return { percentage: percentage.toFixed(1), grade };
 };
 
+// ── Intended-course level filtering ─────────────────────────────────────────
+// Courses carry no explicit level field, so the level is detected from the
+// course title. Titles that match nothing (level === null) are always shown,
+// so admin-managed courses never disappear silently.
+const COURSE_LEVEL_PATTERNS = [
+  { level: "doctorate", pattern: /(ph\.?\s?d|doctorate|doctoral)/i },
+  {
+    level: "postgraduate",
+    pattern:
+      /(master|mba|m\.?\s?sc|m\.?\s?tech|m\.?\s?e\b|mphil|postgraduate|graduate\s+(certificate|diploma)|pg\s?dip)/i,
+  },
+  {
+    level: "undergraduate",
+    pattern:
+      /(bachelor|b\.?\s?sc|b\.?\s?tech|b\.?\s?e\b|bba|bca|b\.?\s?com|undergraduate|associate degree)/i,
+  },
+  { level: "diploma", pattern: /(diploma|certificate|foundation)/i },
+];
+
+const detectCourseLevel = (title = "") => {
+  for (const { level, pattern } of COURSE_LEVEL_PATTERNS) {
+    if (pattern.test(title)) return level;
+  }
+  return null;
+};
+
+// Which course levels make sense as the *next* step for each completed
+// qualification (keys from EDUCATION_LEVELS).
+const COURSE_LEVELS_AFTER = {
+  y10: ["undergraduate", "diploma"],
+  y12: ["undergraduate", "diploma"],
+  graduate: ["postgraduate", "doctorate"],
+  postgraduate: ["postgraduate", "doctorate"],
+  phd: null, // PhD holders can aim anywhere — no filter
+};
+
+const QUALIFICATION_LEVEL_HINT = {
+  y10: "Showing Bachelor / diploma-level courses — the usual next step after 10th.",
+  y12: "Showing Bachelor-level courses — the usual next step after 12th.",
+  graduate:
+    "Showing Master / PhD-level courses — the usual next step after graduation.",
+  postgraduate: "Showing Master / PhD-level courses.",
+};
+
+const filterCoursesForQualification = (courses, qualificationKey) => {
+  const allowed = COURSE_LEVELS_AFTER[qualificationKey];
+  if (!allowed) return courses;
+  return courses.filter((course) => {
+    const level = detectCourseLevel(course.title);
+    return level === null || allowed.includes(level);
+  });
+};
+
+const ACCEPT_DOC_UPLOAD = ".pdf,.jpg,.jpeg,.png";
+
 const INITIAL = {
   // Personal
   first_name: "",
@@ -225,6 +282,8 @@ const INITIAL = {
   employment_records: [createEmploymentRecord()],
   work_relevant_to_course: false,
   work_verification_done: false,
+  work_verification_contact_phone: "",
+  work_verification_contact_email: "",
 
   // Visa & loan
   course_in_line_with_previous_education: true,
@@ -371,6 +430,7 @@ export default function CalculatorClient({ today: initialToday }) {
   const [today, setToday] = useState(initialToday);
   const [managedCourses, setManagedCourses] = useState(null);
   const [otherCourseFields, setOtherCourseFields] = useState({});
+  const [docUploading, setDocUploading] = useState({});
   const [calculatorUnlocked, setCalculatorUnlocked] = useState(false);
 
   useEffect(() => {
@@ -500,6 +560,8 @@ export default function CalculatorClient({ today: initialToday }) {
                 status: "",
                 year_established: "",
                 remarks: "",
+                file_url: "",
+                file_name: "",
               })),
             }
           : s,
@@ -511,7 +573,9 @@ export default function CalculatorClient({ today: initialToday }) {
     markTouched(
       field === "year_established"
         ? `sponsor_doc_year_${id}_${docKey}`
-        : `sponsor_doc_${id}_${docKey}`,
+        : field === "file_url"
+          ? `sponsor_doc_file_${id}_${docKey}`
+          : `sponsor_doc_${id}_${docKey}`,
     );
     setForm((f) => ({
       ...f,
@@ -526,6 +590,34 @@ export default function CalculatorClient({ today: initialToday }) {
           : s,
       ),
     }));
+  };
+
+  const uploadSponsorDocument = async (sponsorId, docKey, file) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("File too large — maximum 10 MB.");
+      return;
+    }
+    const uploadKey = `${sponsorId}_${docKey}`;
+    setDocUploading((current) => ({ ...current, [uploadKey]: true }));
+    try {
+      // Documents are stored in Cloudinary (see app/api/upload/route.js).
+      const body = new FormData();
+      body.append("document", file);
+      body.append("folder", "sponsor_documents");
+      const response = await fetch("/api/upload", { method: "POST", body });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.fileUrl) {
+        throw new Error(result.error || "Upload failed. Please try again.");
+      }
+      updateSponsorDoc(sponsorId, docKey, "file_url", result.fileUrl);
+      updateSponsorDoc(sponsorId, docKey, "file_name", file.name);
+      toast.success(`${file.name} uploaded.`);
+    } catch (error) {
+      toast.error(error?.message || "Upload failed. Please try again.");
+    } finally {
+      setDocUploading((current) => ({ ...current, [uploadKey]: false }));
+    }
   };
 
   const totalSponsorIncome = useMemo(
@@ -544,13 +636,27 @@ export default function CalculatorClient({ today: initialToday }) {
           snapshot.docs.map((course) => ({ id: course.id, ...course.data() })),
         ),
       )
-      .catch(() => setManagedCourses([]));
+      .catch((err) => {
+        console.warn("Could not load managed courses, using local catalog:", err);
+        setManagedCourses([]);
+      });
   }, []);
 
+  // Fall back to the built-in catalog whenever the managed (Firestore) list
+  // is unavailable or empty, so the picker is never blank.
   const courseCatalog = useMemo(
-    () => (managedCourses === null ? COURSES : managedCourses),
+    () =>
+      managedCourses && managedCourses.length > 0 ? managedCourses : COURSES,
     [managedCourses],
   );
+
+  // Intended-course list adapts to the highest completed qualification:
+  // 10th/12th → Bachelor-level courses, Graduation → Master/PhD-level courses.
+  const intendedCourseCatalog = useMemo(
+    () => filterCoursesForQualification(courseCatalog, form.highest_qualification),
+    [courseCatalog, form.highest_qualification],
+  );
+  const courseLevelHint = QUALIFICATION_LEVEL_HINT[form.highest_qualification];
 
   useEffect(() => {
     if (Object.keys(touched).length === 0) return;
@@ -869,11 +975,12 @@ export default function CalculatorClient({ today: initialToday }) {
                     <div className="md:col-span-2">
                       <Field
                         label="Intended course"
+                        hint={courseLevelHint}
                         error={errors.intended_course}
                         testId="field-intended_course"
                       >
                         <CoursePicker
-                          courses={COURSES}
+                          courses={intendedCourseCatalog}
                           value={form.intended_course}
                           onChange={(value) => set("intended_course", value)}
                           isOther={Boolean(otherCourseFields.intended_course)}
@@ -1585,71 +1692,167 @@ export default function CalculatorClient({ today: initialToday }) {
                             {sp.docs.map((doc) => (
                               <div
                                 key={doc.key}
-                                className="rounded-lg bg-muted p-4 grid md:grid-cols-3 gap-4"
+                                className="rounded-lg bg-muted p-4 grid md:grid-cols-2 gap-4"
                               >
-                                <Field
-                                  label={doc.label}
-                                  error={
-                                    errors[`sponsor_doc_${sp.id}_${doc.key}`]
-                                  }
-                                >
-                                  <Select
-                                    value={doc.status}
-                                    onValueChange={(v) =>
-                                      updateSponsorDoc(
-                                        sp.id,
-                                        doc.key,
-                                        "status",
-                                        v,
-                                      )
+                                {/* Left column — status (+ year when relevant) */}
+                                <div className="space-y-4">
+                                  <Field
+                                    label={`${doc.label} — do you have it?`}
+                                    error={
+                                      errors[`sponsor_doc_${sp.id}_${doc.key}`]
                                     }
                                   >
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Document status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="yes">Yes</SelectItem>
-                                      <SelectItem value="no">No</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </Field>
-                                {doc.year_required && (
+                                    <Select
+                                      value={doc.status}
+                                      onValueChange={(v) =>
+                                        updateSponsorDoc(
+                                          sp.id,
+                                          doc.key,
+                                          "status",
+                                          v,
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Document status" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="yes">
+                                          Yes, I have it
+                                        </SelectItem>
+                                        <SelectItem value="no">
+                                          No, not available
+                                        </SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </Field>
+                                  {doc.year_required && doc.status === "yes" && (
+                                    <Field
+                                      label="Year established"
+                                      error={
+                                        errors[
+                                          `sponsor_doc_year_${sp.id}_${doc.key}`
+                                        ]
+                                      }
+                                    >
+                                      <Input
+                                        type="number"
+                                        value={doc.year_established}
+                                        onChange={(e) =>
+                                          updateSponsorDoc(
+                                            sp.id,
+                                            doc.key,
+                                            "year_established",
+                                            e.target.value,
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                  )}
+                                </div>
+
+                                {/* Right column — upload when Yes, note when No */}
+                                {doc.status === "yes" ? (
                                   <Field
-                                    label="Year established"
+                                    label="Upload document"
                                     error={
                                       errors[
-                                        `sponsor_doc_year_${sp.id}_${doc.key}`
+                                        `sponsor_doc_file_${sp.id}_${doc.key}`
                                       ]
                                     }
                                   >
-                                    <Input
-                                      type="number"
-                                      value={doc.year_established}
+                                    {docUploading[`${sp.id}_${doc.key}`] ? (
+                                      <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted-foreground">
+                                        <Loader2
+                                          size={16}
+                                          className="animate-spin"
+                                        />
+                                        Uploading…
+                                      </div>
+                                    ) : doc.file_url ? (
+                                      <div
+                                        className="flex items-center gap-3 rounded-md border border-border bg-white px-3 py-2"
+                                        data-testid={`doc-file-${sp.id}-${doc.key}`}
+                                      >
+                                        <FileText
+                                          size={16}
+                                          className="shrink-0 text-primary"
+                                        />
+                                        <span className="min-w-0 flex-1 truncate text-sm text-secondary">
+                                          {doc.file_name || "Document saved"}
+                                        </span>
+                                        <a
+                                          href={doc.file_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="shrink-0 text-sm font-medium text-primary underline"
+                                        >
+                                          View
+                                        </a>
+                                        <button
+                                          type="button"
+                                          className="shrink-0 text-sm font-medium text-destructive"
+                                          onClick={() => {
+                                            updateSponsorDoc(
+                                              sp.id,
+                                              doc.key,
+                                              "file_url",
+                                              "",
+                                            );
+                                            updateSponsorDoc(
+                                              sp.id,
+                                              doc.key,
+                                              "file_name",
+                                              "",
+                                            );
+                                          }}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-white px-3 text-sm font-medium text-secondary transition-colors hover:border-primary/50 hover:bg-primary/5">
+                                        <Upload size={16} />
+                                        Upload PDF / JPG / PNG
+                                        <input
+                                          type="file"
+                                          className="hidden"
+                                          accept={ACCEPT_DOC_UPLOAD}
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            e.target.value = "";
+                                            if (file)
+                                              uploadSponsorDocument(
+                                                sp.id,
+                                                doc.key,
+                                                file,
+                                              );
+                                          }}
+                                        />
+                                      </label>
+                                    )}
+                                  </Field>
+                                ) : doc.status === "no" ? (
+                                  <Field label="Remark / note">
+                                    <Textarea
+                                      value={doc.remarks}
                                       onChange={(e) =>
                                         updateSponsorDoc(
                                           sp.id,
                                           doc.key,
-                                          "year_established",
+                                          "remarks",
                                           e.target.value,
                                         )
                                       }
+                                      placeholder="Why is it not available? e.g. waiting for bank statement"
                                     />
                                   </Field>
+                                ) : (
+                                  <p className="self-end pb-2 text-xs text-muted-foreground">
+                                    Select Yes to upload the document, or No to
+                                    leave a note.
+                                  </p>
                                 )}
-                                <Field label="Remarks">
-                                  <Textarea
-                                    value={doc.remarks}
-                                    onChange={(e) =>
-                                      updateSponsorDoc(
-                                        sp.id,
-                                        doc.key,
-                                        "remarks",
-                                        e.target.value,
-                                      )
-                                    }
-                                    placeholder="Optional notes"
-                                  />
-                                </Field>
                               </div>
                             ))}
                           </div>
@@ -1666,7 +1869,7 @@ export default function CalculatorClient({ today: initialToday }) {
               {/* STEP 4 — WORK DETAILS */}
               {step === 4 && (
                 <div className="space-y-8">
-                  <div className="grid md:grid-cols-2 gap-6 pb-2 border-b border-border">
+                  <div className="space-y-5 pb-6 border-b border-border">
                     <Field label="Is your work experience relevant to the intended course?">
                       <YesNo
                         value={form.work_relevant_to_course}
@@ -1677,10 +1880,65 @@ export default function CalculatorClient({ today: initialToday }) {
                     <Field label="Can this employment be independently verified?">
                       <YesNo
                         value={form.work_verification_done}
-                        onChange={(v) => set("work_verification_done", v)}
+                        onChange={(v) => {
+                          set("work_verification_done", v);
+                          if (!v) {
+                            setForm((f) => ({
+                              ...f,
+                              work_verification_contact_phone: "",
+                              work_verification_contact_email: "",
+                            }));
+                          }
+                        }}
                         testId="radio-work_verification_done"
                       />
                     </Field>
+                    {form.work_verification_done && (
+                      <div
+                        className="grid md:grid-cols-2 gap-5 rounded-xl border border-border bg-muted/40 p-4 md:p-5"
+                        data-testid="work-verification-contact-fields"
+                      >
+                        <Field
+                          label="Verification contact phone"
+                          hint="Employer / HR number we can call to verify"
+                          error={errors.work_verification_contact_phone}
+                          testId="field-work_verification_contact_phone"
+                        >
+                          <Input
+                            data-testid="input-work_verification_contact_phone"
+                            inputMode="numeric"
+                            maxLength={10}
+                            value={form.work_verification_contact_phone}
+                            onChange={(e) =>
+                              set(
+                                "work_verification_contact_phone",
+                                e.target.value.replace(/\D/g, "").slice(0, 10),
+                              )
+                            }
+                            placeholder="10-digit phone number"
+                          />
+                        </Field>
+                        <Field
+                          label="Verification contact email"
+                          hint="Employer / HR email we can write to"
+                          error={errors.work_verification_contact_email}
+                          testId="field-work_verification_contact_email"
+                        >
+                          <Input
+                            data-testid="input-work_verification_contact_email"
+                            type="email"
+                            value={form.work_verification_contact_email}
+                            onChange={(e) =>
+                              set(
+                                "work_verification_contact_email",
+                                e.target.value,
+                              )
+                            }
+                            placeholder="hr@company.com"
+                          />
+                        </Field>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-5">
                     {form.employment_records.map((record, index) => (
@@ -2221,41 +2479,42 @@ export default function CalculatorClient({ today: initialToday }) {
               )}
               {/* STEP 6 — MARITAL DETAILS */}
               {step === 3 && (
-                <div className="grid md:grid-cols-2 gap-6">
-                  <Field
-                    label="Is the student married?"
-                    error={errors.is_married}
-                    testId="field-is_married"
-                  >
-                    <YesNo
-                      value={form.is_married}
-                      onChange={(v) => set("is_married", v)}
-                      testId="radio-is_married"
-                    />
-                  </Field>
-                  {form.is_married && (
-                    <>
-                      <Field
-                        label="Does the student have a child?"
-                        testId="field-has_child"
-                      >
-                        <YesNo
-                          value={form.has_child}
-                          onChange={(v) => set("has_child", v)}
-                          testId="radio-has_child"
-                        />
-                      </Field>
-                      {form.has_child && (
+                <div className="grid md:grid-cols-2 gap-6 items-start">
+                  {/* Left column — marriage + spouse questions */}
+                  <div className="space-y-6">
+                    <Field
+                      label="Is the student married?"
+                      error={errors.is_married}
+                      testId="field-is_married"
+                    >
+                      <YesNo
+                        value={form.is_married}
+                        onChange={(v) => set("is_married", v)}
+                        testId="radio-is_married"
+                      />
+                    </Field>
+                    {form.is_married && (
+                      <>
                         <Field
-                          label="Number of children"
-                          error={errors.child_count}
-                          testId="field-child_count"
+                          label="Spouse will accompany?"
+                          testId="field-spouse_will_accompany"
+                        >
+                          <YesNo
+                            value={form.spouse_will_accompany}
+                            onChange={(v) => set("spouse_will_accompany", v)}
+                            testId="radio-spouse_will_accompany"
+                          />
+                        </Field>
+                        <Field
+                          label="Spouse qualification (optional)"
+                          testId="field-spouse_qualification"
                         >
                           <Input
-                            type="number"
-                            min="1"
-                            value={form.child_count}
-                            onChange={(e) => set("child_count", e.target.value)}
+                            data-testid="input-spouse_qualification"
+                            value={form.spouse_qualification}
+                            onChange={(e) =>
+                              set("spouse_qualification", e.target.value)
+                            }
                           />
                         </Field>
                       )}
@@ -2294,7 +2553,12 @@ export default function CalculatorClient({ today: initialToday }) {
                             <SelectValue placeholder="Select an option" />
                           </SelectTrigger>
                           <SelectContent>
-                            {["Working", "Studying", "Unemployed"].map((v) => (
+                            {[
+                              "Working",
+                              "Studying",
+                              "Homemaker",
+                              "Unemployed",
+                            ].map((v) => (
                               <SelectItem key={v} value={v}>
                                 {v}
                               </SelectItem>

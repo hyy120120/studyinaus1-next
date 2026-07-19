@@ -10,6 +10,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandList,
 } from "@/components/ui/command";
 
 import {
@@ -52,28 +53,33 @@ export default function UniversityPicker({
         <Command>
           <CommandInput placeholder="Search university..." />
 
-          <CommandEmpty>No university found.</CommandEmpty>
+          {/* CommandList is the independently scrollable region.
+              data-lenis-prevent/overscroll-contain (set in ui/command) keep
+              wheel events inside the dropdown instead of scrolling the page. */}
+          <CommandList className="max-h-72">
+            <CommandEmpty>No university found.</CommandEmpty>
 
-          <CommandGroup className="max-h-72 overflow-y-auto">
-            {list.map((university) => (
-              <CommandItem
-                key={university}
-                value={university}
-                onSelect={() => {
-                  onChange(university);
-                  setOpen(false);
-                }}
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4",
-                    value === university ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                {university}
-              </CommandItem>
-            ))}
-          </CommandGroup>
+            <CommandGroup>
+              {list.map((university) => (
+                <CommandItem
+                  key={university}
+                  value={university}
+                  onSelect={() => {
+                    onChange(university);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === university ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  {university}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
