@@ -2135,234 +2135,90 @@ export default function CalculatorClient({ today: initialToday }) {
 
               {/* STEP 5 — VISA & LOAN */}
               {step === 5 && (
-                <div className="space-y-8">
-                  <div className="space-y-5">
-                    <div className="rounded-xl border border-border p-5 md:p-6">
-                      <Field
-                        label="Is your intended course in line with your previous education?"
-                        error={errors.course_in_line_with_previous_education}
-                        testId="field-course_in_line_with_previous_education"
-                      >
-                        <YesNo
-                          value={form.course_in_line_with_previous_education}
-                          onChange={(v) =>
-                            set("course_in_line_with_previous_education", v)
-                          }
-                          testId="radio-course_in_line_with_previous_education"
-                        />
-                      </Field>
-                    </div>
-                    <div className="rounded-xl border border-border p-5 md:p-6">
-                      <Field
-                        label="Applied for any country's visa before?"
-                        error={errors.applied_visa_before}
-                        testId="field-applied_visa_before"
-                      >
-                        <Select
-                          value={form.applied_visa_before}
-                          onValueChange={(v) => set("applied_visa_before", v)}
-                        >
-                          <SelectTrigger data-testid="select-applied_visa_before">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {["None", "Student", "Tourist", "PR", "TR"].map(
-                              (v) => (
-                                <SelectItem key={v} value={v}>
-                                  {v}
-                                </SelectItem>
-                              ),
-                            )}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    </div>
-                    <div className="rounded-xl border border-border p-5 md:p-6">
-                      <Field
-                        label="Has a visa ever been refused (any country)?"
-                        error={errors.previous_visa_refusal}
-                        testId="field-previous_visa_refusal"
-                      >
-                        <YesNo
-                          value={form.previous_visa_refusal}
-                          onChange={(v) => set("previous_visa_refusal", v)}
-                          testId="radio-previous_visa_refusal"
-                        />
-                      </Field>
-                    </div>
-                    {form.previous_visa_refusal && (
-                      <div className="grid gap-5 rounded-xl border border-border bg-muted/40 p-5 md:grid-cols-2 md:p-6">
-                        <Field
-                          label="Country of refusal"
-                          error={errors.refusal_country}
-                          testId="field-refusal_country"
-                        >
-                          <Input
-                            data-testid="input-refusal_country"
-                            value={form.refusal_country}
-                            onChange={(e) =>
-                              set("refusal_country", e.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Stated reason for refusal"
-                          error={errors.refusal_reason}
-                          testId="field-refusal_reason"
-                        >
-                          <Textarea
-                            data-testid="input-refusal_reason"
-                            value={form.refusal_reason}
-                            onChange={(e) =>
-                              set("refusal_reason", e.target.value)
-                            }
-                            placeholder="e.g. GTE concerns, insufficient funds"
-                          />
-                        </Field>
-                      </div>
-                    )}
-                  </div>
+                <div className="space-y-6">
 
-                  <div className="hidden pt-4 border-t border-border">
-                    <Field
-                      label="Is an education loan required?"
-                      error={errors.education_loan_required}
-                      testId="field-education_loan_required"
-                    >
-                      <YesNo
-                        value={form.education_loan_required}
-                        onChange={(v) => set("education_loan_required", v)}
-                        testId="radio-education_loan_required"
-                      />
-                    </Field>
-                    {form.education_loan_required && (
-                      <div className="grid md:grid-cols-2 gap-6 mt-6">
-                        <Field
-                          label="Loan type"
-                          error={errors.loan_type}
-                          testId="field-loan_type"
-                        >
-                          <Select
-                            value={form.loan_type}
-                            onValueChange={(v) => set("loan_type", v)}
-                          >
-                            <SelectTrigger data-testid="select-loan_type">
-                              <SelectValue placeholder="Select loan type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["Secured", "Unsecured"].map((v) => (
-                                <SelectItem key={v} value={v}>
-                                  {v}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </Field>
-                        <Field
-                          label="Lender / Bank name"
-                          error={errors.lender_bank_name}
-                          testId="field-lender_bank_name"
-                        >
-                          <Input
-                            data-testid="input-lender_bank_name"
-                            value={form.lender_bank_name}
-                            onChange={(e) =>
-                              set("lender_bank_name", e.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Loan amount (₹)"
-                          error={errors.loan_amount_inr}
-                          testId="field-loan_amount_inr"
-                        >
-                          <Input
-                            data-testid="input-loan_amount_inr"
-                            type="number"
-                            value={form.loan_amount_inr}
-                            onChange={(e) =>
-                              set("loan_amount_inr", e.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Annual interest rate (%)"
-                          error={errors.annual_interest_rate}
-                          testId="field-annual_interest_rate"
-                        >
-                          <Input
-                            data-testid="input-annual_interest_rate"
-                            type="number"
-                            step="0.1"
-                            value={form.annual_interest_rate}
-                            onChange={(e) =>
-                              set("annual_interest_rate", e.target.value)
-                            }
-                            placeholder="e.g. 10.5"
-                          />
-                        </Field>
-                        <Field
-                          label="Loan tenure (years)"
-                          error={errors.loan_tenure_years}
-                          testId="field-loan_tenure_years"
-                        >
-                          <Input
-                            data-testid="input-loan_tenure_years"
-                            type="number"
-                            min="1"
-                            max="30"
-                            value={form.loan_tenure_years}
-                            onChange={(e) =>
-                              set("loan_tenure_years", e.target.value)
-                            }
-                            placeholder="e.g. 10"
-                          />
-                        </Field>
-                        {emi.monthlyEmi > 0 && (
-                          <div
-                            className="md:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted rounded-xl p-4"
-                            data-testid="emi-result-box"
-                          >
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-primary">
-                                ₹{emi.monthlyEmi.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Monthly EMI
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-secondary">
-                                ₹{emi.totalPayable.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Total Payable
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-secondary">
-                                ₹{emi.totalInterest.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Total Interest
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-secondary">
-                                ₹{emi.principal.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Principal
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
+  {/* Question 1 */}
+  <div className="rounded-xl border border-border p-5">
+    <Field
+      label="Is your intended course in line with your previous education?"
+      error={errors.course_in_line_with_previous_education}
+    >
+      <YesNo
+        value={form.course_in_line_with_previous_education}
+        onChange={(v) =>
+          set("course_in_line_with_previous_education", v)
+        }
+      />
+    </Field>
+  </div>
+
+  {/* Question 2 */}
+  <div className="rounded-xl border border-border p-5">
+    <Field
+      label="Is employment verification required?"
+      error={errors.employment_verification}
+    >
+      <YesNo
+        value={form.employment_verification}
+        onChange={(v) => set("employment_verification", v)}
+      />
+    </Field>
+
+    {form.employment_verification && (
+      <div className="mt-6 rounded-lg bg-muted/40 border p-5">
+        <h4 className="font-semibold mb-4">
+          Verification Contact Details
+        </h4>
+
+        <div className="grid md:grid-cols-2 gap-5">
+
+          <Field
+            label="Contact Number"
+            error={errors.verification_contact_number}
+          >
+            <Input
+              value={form.verification_contact_number}
+              onChange={(e) =>
+                set("verification_contact_number", e.target.value)
+              }
+              placeholder="Enter Contact Number"
+            />
+          </Field>
+
+          <Field
+            label="Email ID"
+            error={errors.verification_email}
+          >
+            <Input
+              type="email"
+              value={form.verification_email}
+              onChange={(e) =>
+                set("verification_email", e.target.value)
+              }
+              placeholder="Enter Email ID"
+            />
+          </Field>
+
+        </div>
+      </div>
+    )}
+  </div>
+
+  {/* Question 3 */}
+  <div className="rounded-xl border border-border p-5">
+    <Field
+      label="Has a visa ever been refused?"
+      error={errors.previous_visa_refusal}
+    >
+      <YesNo
+        value={form.previous_visa_refusal}
+        onChange={(v) => set("previous_visa_refusal", v)}
+      />
+    </Field>
+  </div>
+
+</div>
               )}
-
               {/* STEP 6 — MARITAL DETAILS */}
               {step === 3 && (
                 <div className="grid md:grid-cols-2 gap-6">
@@ -2438,12 +2294,7 @@ export default function CalculatorClient({ today: initialToday }) {
                             <SelectValue placeholder="Select an option" />
                           </SelectTrigger>
                           <SelectContent>
-                            {[
-                              "Working",
-                              "Studying",
-                              "Homemaker",
-                              "Unemployed",
-                            ].map((v) => (
+                            {["Working", "Studying", "Unemployed"].map((v) => (
                               <SelectItem key={v} value={v}>
                                 {v}
                               </SelectItem>
