@@ -2517,57 +2517,35 @@ export default function CalculatorClient({ today: initialToday }) {
                             }
                           />
                         </Field>
-                      )}
-                      <Field
-                        label="Spouse will accompany?"
-                        testId="field-spouse_will_accompany"
-                      >
-                        <YesNo
-                          value={form.spouse_will_accompany}
-                          onChange={(v) => set("spouse_will_accompany", v)}
-                          testId="radio-spouse_will_accompany"
-                        />
-                      </Field>
-                      <Field
-                        label="Spouse qualification (optional)"
-                        testId="field-spouse_qualification"
-                      >
-                        <Input
-                          data-testid="input-spouse_qualification"
-                          value={form.spouse_qualification}
-                          onChange={(e) =>
-                            set("spouse_qualification", e.target.value)
-                          }
-                        />
-                      </Field>
-                      <Field
-                        label="Spouse present activity"
-                        error={errors.spouse_present_activity}
-                        testId="field-spouse_activity"
-                      >
-                        <Select
-                          value={form.spouse_activity}
-                          onValueChange={(v) => set("spouse_activity", v)}
+                        <Field
+                          label="Spouse present activity"
+                          error={errors.spouse_activity}
+                          testId="field-spouse_activity"
                         >
-                          <SelectTrigger data-testid="select-spouse_activity">
-                            <SelectValue placeholder="Select an option" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[
-                              "Working",
-                              "Studying",
-                              "Homemaker",
-                              "Unemployed",
-                            ].map((v) => (
-                              <SelectItem key={v} value={v}>
-                                {v}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    </>
-                  )}
+                          <Select
+                            value={form.spouse_activity}
+                            onValueChange={(v) => set("spouse_activity", v)}
+                          >
+                            <SelectTrigger data-testid="select-spouse_activity">
+                              <SelectValue placeholder="Select an option" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {[
+                                "Working",
+                                "Studying",
+                                "Homemaker",
+                                "Unemployed",
+                              ].map((v) => (
+                                <SelectItem key={v} value={v}>
+                                  {v}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
 
