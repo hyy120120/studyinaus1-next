@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   Upload,
   FileText,
+  User,
+  Phone,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -637,7 +639,10 @@ export default function CalculatorClient({ today: initialToday }) {
         ),
       )
       .catch((err) => {
-        console.warn("Could not load managed courses, using local catalog:", err);
+        console.warn(
+          "Could not load managed courses, using local catalog:",
+          err,
+        );
         setManagedCourses([]);
       });
   }, []);
@@ -653,7 +658,8 @@ export default function CalculatorClient({ today: initialToday }) {
   // Intended-course list adapts to the highest completed qualification:
   // 10th/12th → Bachelor-level courses, Graduation → Master/PhD-level courses.
   const intendedCourseCatalog = useMemo(
-    () => filterCoursesForQualification(courseCatalog, form.highest_qualification),
+    () =>
+      filterCoursesForQualification(courseCatalog, form.highest_qualification),
     [courseCatalog, form.highest_qualification],
   );
   const courseLevelHint = QUALIFICATION_LEVEL_HINT[form.highest_qualification];
@@ -1694,165 +1700,166 @@ export default function CalculatorClient({ today: initialToday }) {
                                 key={doc.key}
                                 className="rounded-lg bg-muted p-4 grid md:grid-cols-2 gap-4"
                               >
-                                {/* Left column — status (+ year when relevant) */}
-                                <div className="space-y-4">
-                                  <Field
-                                    label={`${doc.label} — do you have it?`}
-                                    error={
-                                      errors[`sponsor_doc_${sp.id}_${doc.key}`]
+                                {/* Row 1 — status (left) + year (right) */}
+                                <Field
+                                  label={`${doc.label}`}
+                                  error={
+                                    errors[`sponsor_doc_${sp.id}_${doc.key}`]
+                                  }
+                                >
+                                  <Select
+                                    value={doc.status}
+                                    onValueChange={(v) =>
+                                      updateSponsorDoc(
+                                        sp.id,
+                                        doc.key,
+                                        "status",
+                                        v,
+                                      )
                                     }
                                   >
-                                    <Select
-                                      value={doc.status}
-                                      onValueChange={(v) =>
-                                        updateSponsorDoc(
-                                          sp.id,
-                                          doc.key,
-                                          "status",
-                                          v,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger>
-                                        <SelectValue placeholder="Document status" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="yes">
-                                          Yes, I have it
-                                        </SelectItem>
-                                        <SelectItem value="no">
-                                          No, not available
-                                        </SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </Field>
-                                  {doc.year_required && doc.status === "yes" && (
-                                    <Field
-                                      label="Year established"
-                                      error={
-                                        errors[
-                                          `sponsor_doc_year_${sp.id}_${doc.key}`
-                                        ]
-                                      }
-                                    >
-                                      <Input
-                                        type="number"
-                                        value={doc.year_established}
-                                        onChange={(e) =>
-                                          updateSponsorDoc(
-                                            sp.id,
-                                            doc.key,
-                                            "year_established",
-                                            e.target.value,
-                                          )
-                                        }
-                                      />
-                                    </Field>
-                                  )}
-                                </div>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Document status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="yes">
+                                        Yes, I have it
+                                      </SelectItem>
+                                      <SelectItem value="no">
+                                        No, not available
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </Field>
 
-                                {/* Right column — upload when Yes, note when No */}
-                                {doc.status === "yes" ? (
+                                {doc.year_required && doc.status === "yes" && (
                                   <Field
-                                    label="Upload document"
+                                    label="Year established"
                                     error={
                                       errors[
-                                        `sponsor_doc_file_${sp.id}_${doc.key}`
+                                        `sponsor_doc_year_${sp.id}_${doc.key}`
                                       ]
                                     }
                                   >
-                                    {docUploading[`${sp.id}_${doc.key}`] ? (
-                                      <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted-foreground">
-                                        <Loader2
-                                          size={16}
-                                          className="animate-spin"
-                                        />
-                                        Uploading…
-                                      </div>
-                                    ) : doc.file_url ? (
-                                      <div
-                                        className="flex items-center gap-3 rounded-md border border-border bg-white px-3 py-2"
-                                        data-testid={`doc-file-${sp.id}-${doc.key}`}
-                                      >
-                                        <FileText
-                                          size={16}
-                                          className="shrink-0 text-primary"
-                                        />
-                                        <span className="min-w-0 flex-1 truncate text-sm text-secondary">
-                                          {doc.file_name || "Document saved"}
-                                        </span>
-                                        <a
-                                          href={doc.file_url}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="shrink-0 text-sm font-medium text-primary underline"
-                                        >
-                                          View
-                                        </a>
-                                        <button
-                                          type="button"
-                                          className="shrink-0 text-sm font-medium text-destructive"
-                                          onClick={() => {
-                                            updateSponsorDoc(
-                                              sp.id,
-                                              doc.key,
-                                              "file_url",
-                                              "",
-                                            );
-                                            updateSponsorDoc(
-                                              sp.id,
-                                              doc.key,
-                                              "file_name",
-                                              "",
-                                            );
-                                          }}
-                                        >
-                                          Remove
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-white px-3 text-sm font-medium text-secondary transition-colors hover:border-primary/50 hover:bg-primary/5">
-                                        <Upload size={16} />
-                                        Upload PDF / JPG / PNG
-                                        <input
-                                          type="file"
-                                          className="hidden"
-                                          accept={ACCEPT_DOC_UPLOAD}
-                                          onChange={(e) => {
-                                            const file = e.target.files?.[0];
-                                            e.target.value = "";
-                                            if (file)
-                                              uploadSponsorDocument(
-                                                sp.id,
-                                                doc.key,
-                                                file,
-                                              );
-                                          }}
-                                        />
-                                      </label>
-                                    )}
-                                  </Field>
-                                ) : doc.status === "no" ? (
-                                  <Field label="Remark / note">
-                                    <Textarea
-                                      value={doc.remarks}
+                                    <Input
+                                      type="number"
+                                      value={doc.year_established}
                                       onChange={(e) =>
                                         updateSponsorDoc(
                                           sp.id,
                                           doc.key,
-                                          "remarks",
+                                          "year_established",
                                           e.target.value,
                                         )
                                       }
-                                      placeholder="Why is it not available? e.g. waiting for bank statement"
                                     />
                                   </Field>
-                                ) : (
-                                  <p className="self-end pb-2 text-xs text-muted-foreground">
-                                    Select Yes to upload the document, or No to
-                                    leave a note.
-                                  </p>
                                 )}
+
+                                {/* Row 2 — full width */}
+                                <div className="md:col-span-2">
+                                  {doc.status === "yes" ? (
+                                    <Field
+                                      label="Upload document"
+                                      error={
+                                        errors[
+                                          `sponsor_doc_file_${sp.id}_${doc.key}`
+                                        ]
+                                      }
+                                    >
+                                      {docUploading[`${sp.id}_${doc.key}`] ? (
+                                        <div className="flex h-9 items-center gap-2 rounded-md border border-border bg-white px-3 text-sm text-muted-foreground">
+                                          <Loader2
+                                            size={16}
+                                            className="animate-spin"
+                                          />
+                                          Uploading…
+                                        </div>
+                                      ) : doc.file_url ? (
+                                        <div
+                                          className="flex items-center gap-3 rounded-md border border-border bg-white px-3 py-2"
+                                          data-testid={`doc-file-${sp.id}-${doc.key}`}
+                                        >
+                                          <FileText
+                                            size={16}
+                                            className="shrink-0 text-primary"
+                                          />
+                                          <span className="min-w-0 flex-1 truncate text-sm text-secondary">
+                                            {doc.file_name || "Document saved"}
+                                          </span>
+                                          <a
+                                            href={doc.file_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="shrink-0 text-sm font-medium text-primary underline"
+                                          >
+                                            View
+                                          </a>
+                                          <button
+                                            type="button"
+                                            className="shrink-0 text-sm font-medium text-destructive"
+                                            onClick={() => {
+                                              updateSponsorDoc(
+                                                sp.id,
+                                                doc.key,
+                                                "file_url",
+                                                "",
+                                              );
+                                              updateSponsorDoc(
+                                                sp.id,
+                                                doc.key,
+                                                "file_name",
+                                                "",
+                                              );
+                                            }}
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-md border-2 border-dashed border-border bg-white px-3 text-sm font-medium text-secondary transition-colors hover:border-primary/50 hover:bg-primary/5">
+                                          <Upload size={16} />
+                                          Upload PDF / JPG / PNG
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            accept={ACCEPT_DOC_UPLOAD}
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              e.target.value = "";
+                                              if (file)
+                                                uploadSponsorDocument(
+                                                  sp.id,
+                                                  doc.key,
+                                                  file,
+                                                );
+                                            }}
+                                          />
+                                        </label>
+                                      )}
+                                    </Field>
+                                  ) : doc.status === "no" ? (
+                                    <Field label="Remark / note">
+                                      <Textarea
+                                        value={doc.remarks}
+                                        onChange={(e) =>
+                                          updateSponsorDoc(
+                                            sp.id,
+                                            doc.key,
+                                            "remarks",
+                                            e.target.value,
+                                          )
+                                        }
+                                        placeholder="Why is it not available? e.g. waiting for bank statement"
+                                      />
+                                    </Field>
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground">
+                                      Select Yes to upload the document, or No
+                                      to leave a note.
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -1873,10 +1880,31 @@ export default function CalculatorClient({ today: initialToday }) {
                     <Field label="Is your work experience relevant to the intended course?">
                       <YesNo
                         value={form.work_relevant_to_course}
-                        onChange={(v) => set("work_relevant_to_course", v)}
+                        onChange={(v) => {
+                          set("work_relevant_to_course", v);
+                          if (!v) set("work_relevance_explanation", "");
+                        }}
                         testId="radio-work_relevant_to_course"
                       />
                     </Field>
+                    {form.work_relevant_to_course && (
+                      <Field
+                        label="How is this experience relevant to your intended course?"
+                        error={errors.work_relevance_explanation}
+                        testId="field-work_relevance_explanation"
+                      >
+                        <Textarea
+                          data-testid="input-work_relevance_explanation"
+                          value={form.work_relevance_explanation}
+                          onChange={(e) =>
+                            set("work_relevance_explanation", e.target.value)
+                          }
+                          placeholder="Briefly describe how your work experience relates to the course you're applying for"
+                          rows={3}
+                        />
+                      </Field>
+                    )}
+
                     <Field label="Can this employment be independently verified?">
                       <YesNo
                         value={form.work_verification_done}
@@ -1885,6 +1913,7 @@ export default function CalculatorClient({ today: initialToday }) {
                           if (!v) {
                             setForm((f) => ({
                               ...f,
+                              work_verification_contact_name: "",
                               work_verification_contact_phone: "",
                               work_verification_contact_email: "",
                             }));
@@ -1893,50 +1922,79 @@ export default function CalculatorClient({ today: initialToday }) {
                         testId="radio-work_verification_done"
                       />
                     </Field>
+
                     {form.work_verification_done && (
                       <div
-                        className="grid md:grid-cols-2 gap-5 rounded-xl border border-border bg-muted/40 p-4 md:p-5"
+                        className="rounded-xl border border-border bg-muted/40 p-5 space-y-4"
                         data-testid="work-verification-contact-fields"
                       >
-                        <Field
-                          label="Verification contact phone"
-                          hint="Employer / HR number we can call to verify"
-                          error={errors.work_verification_contact_phone}
-                          testId="field-work_verification_contact_phone"
-                        >
-                          <Input
-                            data-testid="input-work_verification_contact_phone"
-                            inputMode="numeric"
-                            maxLength={10}
-                            value={form.work_verification_contact_phone}
-                            onChange={(e) =>
-                              set(
-                                "work_verification_contact_phone",
-                                e.target.value.replace(/\D/g, "").slice(0, 10),
-                              )
-                            }
-                            placeholder="10-digit phone number"
-                          />
-                        </Field>
-                        <Field
-                          label="Verification contact email"
-                          hint="Employer / HR email we can write to"
-                          error={errors.work_verification_contact_email}
-                          testId="field-work_verification_contact_email"
-                        >
-                          <Input
-                            data-testid="input-work_verification_contact_email"
-                            type="email"
-                            value={form.work_verification_contact_email}
-                            onChange={(e) =>
-                              set(
-                                "work_verification_contact_email",
-                                e.target.value,
-                              )
-                            }
-                            placeholder="hr@company.com"
-                          />
-                        </Field>
+                        <div className="text-sm font-semibold text-foreground">
+                          Verification contact
+                        </div>
+
+                        <div className="grid md:grid-cols-3 gap-5">
+                          <Field
+                            label="Contact name"
+                            hint="Name of the employer / HR contact"
+                            error={errors.work_verification_contact_name}
+                            testId="field-work_verification_contact_name"
+                          >
+                            <Input
+                              data-testid="input-work_verification_contact_name"
+                              value={form.work_verification_contact_name}
+                              onChange={(e) =>
+                                set(
+                                  "work_verification_contact_name",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Contact person's name"
+                            />
+                          </Field>
+
+                          <Field
+                            label="Contact phone"
+                            hint="Number we can call to verify"
+                            error={errors.work_verification_contact_phone}
+                            testId="field-work_verification_contact_phone"
+                          >
+                            <Input
+                              data-testid="input-work_verification_contact_phone"
+                              inputMode="numeric"
+                              maxLength={10}
+                              value={form.work_verification_contact_phone}
+                              onChange={(e) =>
+                                set(
+                                  "work_verification_contact_phone",
+                                  e.target.value
+                                    .replace(/\D/g, "")
+                                    .slice(0, 10),
+                                )
+                              }
+                              placeholder="10-digit phone number"
+                            />
+                          </Field>
+
+                          <Field
+                            label="Contact email"
+                            hint="Email we can write to"
+                            error={errors.work_verification_contact_email}
+                            testId="field-work_verification_contact_email"
+                          >
+                            <Input
+                              data-testid="input-work_verification_contact_email"
+                              type="email"
+                              value={form.work_verification_contact_email}
+                              onChange={(e) =>
+                                set(
+                                  "work_verification_contact_email",
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="hr@company.com"
+                            />
+                          </Field>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2393,90 +2451,256 @@ export default function CalculatorClient({ today: initialToday }) {
 
               {/* STEP 5 — VISA & LOAN */}
               {step === 5 && (
-                <div className="space-y-6">
+                <div className="space-y-8">
+                  <div className="space-y-5">
+                    <div className="rounded-xl border border-border p-5 md:p-6">
+                      <Field
+                        label="Is your intended course in line with your previous education?"
+                        error={errors.course_in_line_with_previous_education}
+                        testId="field-course_in_line_with_previous_education"
+                      >
+                        <YesNo
+                          value={form.course_in_line_with_previous_education}
+                          onChange={(v) => {
+                            set("course_in_line_with_previous_education", v);
+                            if (v) set("course_change_reason", "");
+                          }}
+                          testId="radio-course_in_line_with_previous_education"
+                        />
+                      </Field>
 
-  {/* Question 1 */}
-  <div className="rounded-xl border border-border p-5">
-    <Field
-      label="Is your intended course in line with your previous education?"
-      error={errors.course_in_line_with_previous_education}
-    >
-      <YesNo
-        value={form.course_in_line_with_previous_education}
-        onChange={(v) =>
-          set("course_in_line_with_previous_education", v)
-        }
-      />
-    </Field>
-  </div>
+                      {form.course_in_line_with_previous_education ===
+                        false && (
+                        <div className="mt-5">
+                          <Field
+                            label="Why are you changing your field of study?"
+                            error={errors.course_change_reason}
+                            testId="field-course_change_reason"
+                          >
+                            <Textarea
+                              data-testid="input-course_change_reason"
+                              value={form.course_change_reason}
+                              onChange={(e) =>
+                                set("course_change_reason", e.target.value)
+                              }
+                              placeholder="Explain the reason for choosing a different field, and how it connects to your career goals"
+                              rows={3}
+                            />
+                          </Field>
+                        </div>
+                      )}
+                    </div>
+                    <div className="rounded-xl border border-border p-5 md:p-6">
+                      <Field
+                        label="Applied for any country's visa before?"
+                        error={errors.applied_visa_before}
+                        testId="field-applied_visa_before"
+                      >
+                        <Select
+                          value={form.applied_visa_before}
+                          onValueChange={(v) => set("applied_visa_before", v)}
+                        >
+                          <SelectTrigger data-testid="select-applied_visa_before">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {["None", "Student", "Tourist", "PR", "TR"].map(
+                              (v) => (
+                                <SelectItem key={v} value={v}>
+                                  {v}
+                                </SelectItem>
+                              ),
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+                    <div className="rounded-xl border border-border p-5 md:p-6">
+                      <Field
+                        label="Has a visa ever been refused (any country)?"
+                        error={errors.previous_visa_refusal}
+                        testId="field-previous_visa_refusal"
+                      >
+                        <YesNo
+                          value={form.previous_visa_refusal}
+                          onChange={(v) => set("previous_visa_refusal", v)}
+                          testId="radio-previous_visa_refusal"
+                        />
+                      </Field>
+                    </div>
+                    {form.previous_visa_refusal && (
+                      <div className="grid gap-5 rounded-xl border border-border bg-muted/40 p-5 md:grid-cols-2 md:p-6">
+                        <Field
+                          label="Country of refusal"
+                          error={errors.refusal_country}
+                          testId="field-refusal_country"
+                        >
+                          <Input
+                            data-testid="input-refusal_country"
+                            value={form.refusal_country}
+                            onChange={(e) =>
+                              set("refusal_country", e.target.value)
+                            }
+                          />
+                        </Field>
+                        <Field
+                          label="Stated reason for refusal"
+                          error={errors.refusal_reason}
+                          testId="field-refusal_reason"
+                        >
+                          <Textarea
+                            data-testid="input-refusal_reason"
+                            value={form.refusal_reason}
+                            onChange={(e) =>
+                              set("refusal_reason", e.target.value)
+                            }
+                            placeholder="e.g. GTE concerns, insufficient funds"
+                          />
+                        </Field>
+                      </div>
+                    )}
+                  </div>
 
-  {/* Question 2 */}
-  <div className="rounded-xl border border-border p-5">
-    <Field
-      label="Is employment verification required?"
-      error={errors.employment_verification}
-    >
-      <YesNo
-        value={form.employment_verification}
-        onChange={(v) => set("employment_verification", v)}
-      />
-    </Field>
-
-    {form.employment_verification && (
-      <div className="mt-6 rounded-lg bg-muted/40 border p-5">
-        <h4 className="font-semibold mb-4">
-          Verification Contact Details
-        </h4>
-
-        <div className="grid md:grid-cols-2 gap-5">
-
-          <Field
-            label="Contact Number"
-            error={errors.verification_contact_number}
-          >
-            <Input
-              value={form.verification_contact_number}
-              onChange={(e) =>
-                set("verification_contact_number", e.target.value)
-              }
-              placeholder="Enter Contact Number"
-            />
-          </Field>
-
-          <Field
-            label="Email ID"
-            error={errors.verification_email}
-          >
-            <Input
-              type="email"
-              value={form.verification_email}
-              onChange={(e) =>
-                set("verification_email", e.target.value)
-              }
-              placeholder="Enter Email ID"
-            />
-          </Field>
-
-        </div>
-      </div>
-    )}
-  </div>
-
-  {/* Question 3 */}
-  <div className="rounded-xl border border-border p-5">
-    <Field
-      label="Has a visa ever been refused?"
-      error={errors.previous_visa_refusal}
-    >
-      <YesNo
-        value={form.previous_visa_refusal}
-        onChange={(v) => set("previous_visa_refusal", v)}
-      />
-    </Field>
-  </div>
-
-</div>
+                  <div className="hidden pt-4 border-t border-border">
+                    <Field
+                      label="Is an education loan required?"
+                      error={errors.education_loan_required}
+                      testId="field-education_loan_required"
+                    >
+                      <YesNo
+                        value={form.education_loan_required}
+                        onChange={(v) => set("education_loan_required", v)}
+                        testId="radio-education_loan_required"
+                      />
+                    </Field>
+                    {form.education_loan_required && (
+                      <div className="grid md:grid-cols-2 gap-6 mt-6">
+                        <Field
+                          label="Loan type"
+                          error={errors.loan_type}
+                          testId="field-loan_type"
+                        >
+                          <Select
+                            value={form.loan_type}
+                            onValueChange={(v) => set("loan_type", v)}
+                          >
+                            <SelectTrigger data-testid="select-loan_type">
+                              <SelectValue placeholder="Select loan type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Secured", "Unsecured"].map((v) => (
+                                <SelectItem key={v} value={v}>
+                                  {v}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                        <Field
+                          label="Lender / Bank name"
+                          error={errors.lender_bank_name}
+                          testId="field-lender_bank_name"
+                        >
+                          <Input
+                            data-testid="input-lender_bank_name"
+                            value={form.lender_bank_name}
+                            onChange={(e) =>
+                              set("lender_bank_name", e.target.value)
+                            }
+                          />
+                        </Field>
+                        <Field
+                          label="Loan amount (₹)"
+                          error={errors.loan_amount_inr}
+                          testId="field-loan_amount_inr"
+                        >
+                          <Input
+                            data-testid="input-loan_amount_inr"
+                            type="number"
+                            value={form.loan_amount_inr}
+                            onChange={(e) =>
+                              set("loan_amount_inr", e.target.value)
+                            }
+                          />
+                        </Field>
+                        <Field
+                          label="Annual interest rate (%)"
+                          error={errors.annual_interest_rate}
+                          testId="field-annual_interest_rate"
+                        >
+                          <Input
+                            data-testid="input-annual_interest_rate"
+                            type="number"
+                            step="0.1"
+                            value={form.annual_interest_rate}
+                            onChange={(e) =>
+                              set("annual_interest_rate", e.target.value)
+                            }
+                            placeholder="e.g. 10.5"
+                          />
+                        </Field>
+                        <Field
+                          label="Loan tenure (years)"
+                          error={errors.loan_tenure_years}
+                          testId="field-loan_tenure_years"
+                        >
+                          <Input
+                            data-testid="input-loan_tenure_years"
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={form.loan_tenure_years}
+                            onChange={(e) =>
+                              set("loan_tenure_years", e.target.value)
+                            }
+                            placeholder="e.g. 10"
+                          />
+                        </Field>
+                        {emi.monthlyEmi > 0 && (
+                          <div
+                            className="md:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted rounded-xl p-4"
+                            data-testid="emi-result-box"
+                          >
+                            <div className="text-center">
+                              <div className="font-display font-black text-lg text-primary">
+                                ₹{emi.monthlyEmi.toLocaleString("en-IN")}
+                              </div>
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
+                                Monthly EMI
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-display font-black text-lg text-secondary">
+                                ₹{emi.totalPayable.toLocaleString("en-IN")}
+                              </div>
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
+                                Total Payable
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-display font-black text-lg text-secondary">
+                                ₹{emi.totalInterest.toLocaleString("en-IN")}
+                              </div>
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
+                                Total Interest
+                              </div>
+                            </div>
+                            <div className="text-center">
+                              <div className="font-display font-black text-lg text-secondary">
+                                ₹{emi.principal.toLocaleString("en-IN")}
+                              </div>
+                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
+                                Principal
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
+
               {/* STEP 6 — MARITAL DETAILS */}
               {step === 3 && (
                 <div className="grid md:grid-cols-2 gap-6 items-start">
@@ -2517,9 +2741,54 @@ export default function CalculatorClient({ today: initialToday }) {
                             }
                           />
                         </Field>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right column — child question, count directly below it */}
+                  <div className="space-y-6">
+                    {form.is_married && (
+                      <>
+                        <Field
+                          label="Does the student have a child?"
+                          testId="field-has_child"
+                        >
+                          <YesNo
+                            value={form.has_child}
+                            onChange={(v) => set("has_child", v)}
+                            testId="radio-has_child"
+                          />
+                        </Field>
+                        {/*
+                          Child count sits directly under the child question.
+                          Its slot is reserved (invisible) when not applicable,
+                          so toggling Yes/No never moves other fields.
+                        */}
+                        <div
+                          className={
+                            form.has_child ? "" : "hidden md:block md:invisible"
+                          }
+                          aria-hidden={!form.has_child}
+                        >
+                          <Field
+                            label="Number of children"
+                            error={errors.child_count}
+                            testId="field-child_count"
+                          >
+                            <Input
+                              type="number"
+                              min="1"
+                              disabled={!form.has_child}
+                              value={form.child_count}
+                              onChange={(e) =>
+                                set("child_count", e.target.value)
+                              }
+                            />
+                          </Field>
+                        </div>
                         <Field
                           label="Spouse present activity"
-                          error={errors.spouse_activity}
+                          error={errors.spouse_present_activity}
                           testId="field-spouse_activity"
                         >
                           <Select
@@ -2530,16 +2799,13 @@ export default function CalculatorClient({ today: initialToday }) {
                               <SelectValue placeholder="Select an option" />
                             </SelectTrigger>
                             <SelectContent>
-                              {[
-                                "Working",
-                                "Studying",
-                                "Homemaker",
-                                "Unemployed",
-                              ].map((v) => (
-                                <SelectItem key={v} value={v}>
-                                  {v}
-                                </SelectItem>
-                              ))}
+                              {["Working", "Studying", "Unemployed"].map(
+                                (v) => (
+                                  <SelectItem key={v} value={v}>
+                                    {v}
+                                  </SelectItem>
+                                ),
+                              )}
                             </SelectContent>
                           </Select>
                         </Field>
