@@ -284,11 +284,14 @@ const INITIAL = {
   employment_records: [createEmploymentRecord()],
   work_relevant_to_course: false,
   work_verification_done: false,
+  work_verification_contact_name: "",
   work_verification_contact_phone: "",
   work_verification_contact_email: "",
+  work_relevance_explanation: "",
 
   // Visa & loan
   course_in_line_with_previous_education: true,
+  course_change_reason: "",
   applied_visa_before: "None",
   previous_visa_refusal: false,
   refusal_country: "",
@@ -2424,7 +2427,7 @@ export default function CalculatorClient({ today: initialToday }) {
                     )}
                   </div>
 
-                  <div className="hidden grid md:grid-cols-2 gap-6 pt-2 border-t border-border">
+                  <div className="hidden md:grid-cols-2 gap-6 pt-2 border-t border-border">
                     <Field
                       label="Is your work experience relevant to the intended course?"
                       testId="field-work_relevant_to_course"
