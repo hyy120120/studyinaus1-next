@@ -80,6 +80,7 @@ import {
 import { POLICY_VERSIONS } from "@/lib/policies";
 import { COURSES } from "@/data/courses";
 import MiniMarksheetScanner from "@/components/MarksheetOCR/MiniMarksheetScanner";
+import SponsorSection from "@/components/sponsor/SponsorSection";
 import UniversityPicker from "../university/UniversityPicker";
 import { australianUniversities } from "@/lib/data/australianUniversities";
 
@@ -300,6 +301,7 @@ const INITIAL = {
   refusal_country: "",
   refusal_reason: "",
   education_loan_required: false,
+  loan_sponsors: [],
   loan_type: "",
   lender_bank_name: "",
   loan_amount_inr: "",
@@ -2666,7 +2668,7 @@ export default function CalculatorClient({ today: initialToday }) {
                     )}
                   </div>
 
-                  <div className="hidden pt-4 border-t border-border">
+                  <div className="pt-4 border-t border-border">
                     <Field
                       label="Is an education loan required?"
                       error={errors.education_loan_required}
@@ -2800,6 +2802,12 @@ export default function CalculatorClient({ today: initialToday }) {
                             </div>
                           </div>
                         )}
+                        <div className="md:col-span-2" data-testid="loan-sponsor-engine-mount">
+                          <SponsorSection
+                            value={form.loan_sponsors}
+                            onChange={(v) => set("loan_sponsors", v)}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
