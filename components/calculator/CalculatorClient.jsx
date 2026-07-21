@@ -351,39 +351,103 @@ function previousEducationEnd(education, key) {
   return educationCompletionYear(previousLevel) || "";
 }
 
-function PassoutYearSelect({ level, dob, education, onChange }) {
-  const years = educationYears(
-    educationTimeline(
-      dob,
-      level.key,
-      "",
-      previousEducationEnd(education, level.key),
-    ).passout,
+const OTHER_YEAR_OPTION = "__other_year__";
+
+// Shared year picker for education dates. Shows only the most realistic
+// years (see educationYears) plus an "Other year…" escape hatch that reveals
+// a type-in field, so unusual cases (older applicants, long gap years) are
+// never blocked. Validation still checks the full realistic DOB range, so a
+// typed year like 2009 for someone born in 1980 is accepted.
+function EducationYearPicker({
+  dob,
+  range,
+  value,
+  onChange,
+  placeholder,
+  testId,
+  noYearsHint,
+}) {
+  const [otherMode, setOtherMode] = useState(false);
+
+  if (!dob) {
+    return (
+      <p className="px-2 py-1.5 text-sm text-muted-foreground">
+        Select your date of birth in the first step to see the available
+        years.
+      </p>
+    );
+  }
+
+  const years = educationYears(range);
+  const valueIsOther = Boolean(value) && !years.includes(String(value));
+  const showOther = otherMode || valueIsOther;
+
+  if (years.length === 0) {
+    return (
+      <p className="px-2 py-1.5 text-sm text-muted-foreground">{noYearsHint}</p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <Select
+        value={showOther ? OTHER_YEAR_OPTION : value}
+        onValueChange={(selected) => {
+          if (selected === OTHER_YEAR_OPTION) {
+            setOtherMode(true);
+            return;
+          }
+          setOtherMode(false);
+          onChange(selected);
+        }}
+      >
+        <SelectTrigger data-testid={testId}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {years.map((year) => (
+            <SelectItem key={year} value={year}>
+              {year}
+            </SelectItem>
+          ))}
+          <SelectItem value={OTHER_YEAR_OPTION}>Other year…</SelectItem>
+        </SelectContent>
+      </Select>
+      {showOther && (
+        <Input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Type your year, e.g. 2009"
+          data-testid={`${testId}-other`}
+        />
+      )}
+    </div>
   );
+}
+
+function PassoutYearSelect({ level, dob, education, onChange }) {
   const noEligibleYears =
     level.key === "y12"
       ? "No valid 12th passout year is available for this DOB and 10th passout year."
       : "No valid passout year is available for this date of birth.";
-
   return (
-    <Select value={level.passout_year} onValueChange={onChange}>
-      <SelectTrigger data-testid={`select-edu_passout_${level.key}`}>
-        <SelectValue placeholder="Select passout year" />
-      </SelectTrigger>
-      <SelectContent>
-        {years.length > 0 ? (
-          years.map((year) => (
-            <SelectItem key={year} value={year}>
-              {year}
-            </SelectItem>
-          ))
-        ) : (
-          <p className="px-2 py-1.5 text-sm text-muted-foreground">
-            {noEligibleYears}
-          </p>
-        )}
-      </SelectContent>
-    </Select>
+    <EducationYearPicker
+      dob={dob}
+      range={
+        educationTimeline(
+          dob,
+          level.key,
+          "",
+          previousEducationEnd(education, level.key),
+        ).passout
+      }
+      value={level.passout_year}
+      onChange={onChange}
+      placeholder="Select passout year"
+      testId={`select-edu_passout_${level.key}`}
+      noYearsHint={noEligibleYears}
+    />
   );
 }
 
@@ -1130,39 +1194,31 @@ export default function CalculatorClient({ today: initialToday }) {
                                 error={errors[`edu_${lvl.key}_start`]}
                                 testId={`field-edu_start_${lvl.key}`}
                               >
-                                <Select
+                                <EducationYearPicker
+                                  dob={form.dob}
+                                  range={
+                                    educationTimeline(
+                                      form.dob,
+                                      lvl.key,
+                                      lvl.start_year,
+                                      previousEducationEnd(
+                                        form.education,
+                                        lvl.key,
+                                      ),
+                                    ).start
+                                  }
                                   value={lvl.start_year}
-                                  onValueChange={(value) =>
+                                  onChange={(value) =>
                                     updateEducation(
                                       lvl.key,
                                       "start_year",
                                       value,
                                     )
                                   }
-                                >
-                                  <SelectTrigger
-                                    data-testid={`select-edu_start_${lvl.key}`}
-                                  >
-                                    <SelectValue placeholder="Select start year" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {educationYears(
-                                      educationTimeline(
-                                        form.dob,
-                                        lvl.key,
-                                        lvl.start_year,
-                                        previousEducationEnd(
-                                          form.education,
-                                          lvl.key,
-                                        ),
-                                      ).start,
-                                    ).map((year) => (
-                                      <SelectItem key={year} value={year}>
-                                        {year}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  placeholder="Select start year"
+                                  testId={`select-edu_start_${lvl.key}`}
+                                  noYearsHint="No valid start year is available for this date of birth."
+                                />
                               </Field>
 
                               <Field
@@ -1170,35 +1226,27 @@ export default function CalculatorClient({ today: initialToday }) {
                                 error={errors[`edu_${lvl.key}_end`]}
                                 testId={`field-edu_end_${lvl.key}`}
                               >
-                                <Select
+                                <EducationYearPicker
+                                  dob={form.dob}
+                                  range={
+                                    educationTimeline(
+                                      form.dob,
+                                      lvl.key,
+                                      lvl.start_year,
+                                      previousEducationEnd(
+                                        form.education,
+                                        lvl.key,
+                                      ),
+                                    ).end
+                                  }
                                   value={lvl.end_year}
-                                  onValueChange={(value) =>
+                                  onChange={(value) =>
                                     updateEducation(lvl.key, "end_year", value)
                                   }
-                                >
-                                  <SelectTrigger
-                                    data-testid={`select-edu_end_${lvl.key}`}
-                                  >
-                                    <SelectValue placeholder="Select end year" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {educationYears(
-                                      educationTimeline(
-                                        form.dob,
-                                        lvl.key,
-                                        lvl.start_year,
-                                        previousEducationEnd(
-                                          form.education,
-                                          lvl.key,
-                                        ),
-                                      ).end,
-                                    ).map((year) => (
-                                      <SelectItem key={year} value={year}>
-                                        {year}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                  placeholder="Select end year"
+                                  testId={`select-edu_end_${lvl.key}`}
+                                  noYearsHint="No valid end year is available for this date of birth."
+                                />
                               </Field>
                             </>
                           )}
