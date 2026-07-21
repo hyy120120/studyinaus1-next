@@ -218,8 +218,6 @@ const INITIAL = {
   age: 0,
   nationality: "Indian",
   has_passport: false,
-  passport_number: "",
-  passport_place_of_issue: "",
   passport_issue_date: "",
   passport_expiry_date: "",
   intended_course: "",
@@ -1017,8 +1015,6 @@ export default function CalculatorClient({ today: initialToday }) {
                         onChange={(v) => {
                           set("has_passport", v);
                           if (!v) {
-                            set("passport_number", "");
-                            set("passport_place_of_issue", "");
                             set("passport_issue_date", "");
                             set("passport_expiry_date", "");
                           }
@@ -1028,36 +1024,6 @@ export default function CalculatorClient({ today: initialToday }) {
                     </Field>
                     {form.has_passport && (
                       <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-border bg-muted/40 p-4">
-                        <Field
-                          label="Passport number"
-                          error={errors.passport_number}
-                          testId="field-passport_number"
-                        >
-                          <Input
-                            data-testid="input-passport_number"
-                            value={form.passport_number}
-                            onChange={(e) =>
-                              set("passport_number", e.target.value)
-                            }
-                            placeholder="e.g. S1234567"
-                            maxLength={20}
-                          />
-                        </Field>
-                        <Field
-                          label="Place of issue"
-                          error={errors.passport_place_of_issue}
-                          testId="field-passport_place_of_issue"
-                        >
-                          <Input
-                            data-testid="input-passport_place_of_issue"
-                            value={form.passport_place_of_issue}
-                            onChange={(e) =>
-                              set("passport_place_of_issue", e.target.value)
-                            }
-                            placeholder="e.g. Ahmedabad"
-                            maxLength={60}
-                          />
-                        </Field>
                         <Field
                           label="Passport issue date"
                           error={errors.passport_issue_date}
