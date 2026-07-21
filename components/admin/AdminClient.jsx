@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Users, ChevronRight, Download, CalendarCheck, X } from "lucide-react";
+import { LogOut, Users, ChevronRight, Download, CalendarCheck, X, FileText, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import {
     onAuthStateChanged, signInWithEmailAndPassword, signOut,
@@ -371,6 +371,41 @@ function Dashboard({ onLogout }) {
                                                 <Download size={14} /> Download PDF report
                                             </button>
                                         </div>
+                                    </div>
+                                    <div>
+                                        <div className="gsa-overline mb-2">Marksheets</div>
+                                        {(() => {
+                                            const levels = (selected.form.education || []).filter((l) => l.applicable);
+                                            if (levels.length === 0) {
+                                                return <p className="text-sm text-muted-foreground">No education records in this application.</p>;
+                                            }
+                                            const fileType = (url) => {
+                                                const ext = /\.([a-z0-9]{3,4})(?:[?#]|$)/i.exec(url || "");
+                                                return ext ? ext[1].toUpperCase() : "FILE";
+                                            };
+                                            return (
+                                                <ul className="space-y-2">
+                                                    {levels.map((l) => (
+                                                        <li key={l.key} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2" data-testid={`marksheet-row-${l.key}`}>
+                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                <FileText size={15} className="text-primary shrink-0" />
+                                                                <span className="text-sm font-medium text-secondary truncate">{l.label} marksheet</span>
+                                                            </div>
+                                                            {l.marksheet_url ? (
+                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-background border border-border rounded px-1.5 py-0.5">{fileType(l.marksheet_url)}</span>
+                                                                    <a href={l.marksheet_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline" data-testid={`marksheet-view-${l.key}`}>
+                                                                        <ExternalLink size={12} /> View
+                                                                    </a>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground shrink-0">Not uploaded</span>
+                                                            )}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            );
+                                        })()}
                                     </div>
                                     <div>
                                         <div className="gsa-overline mb-2">Recommendations</div>
