@@ -58,7 +58,6 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { computeScore, EDUCATION_LEVELS } from "@/lib/scoring";
-import { calculateEmi } from "@/lib/emi";
 import {
   educationCompletionYear,
   educationTimeline,
@@ -301,12 +300,8 @@ const INITIAL = {
   refusal_country: "",
   refusal_reason: "",
   education_loan_required: false,
-  loan_sponsors: [],
-  loan_type: "",
-  lender_bank_name: "",
+  loan_sponsor_id: "",
   loan_amount_inr: "",
-  annual_interest_rate: "",
-  loan_tenure_years: "",
   savings_available: false,
   savings_amount_inr: "",
   fixed_deposits_available: false,
@@ -762,16 +757,6 @@ export default function CalculatorClient({ today: initialToday }) {
         today,
       }),
     [form.dob, form.english_test, today],
-  );
-
-  const emi = useMemo(
-    () =>
-      calculateEmi(
-        form.loan_amount_inr,
-        form.annual_interest_rate,
-        form.loan_tenure_years,
-      ),
-    [form.loan_amount_inr, form.annual_interest_rate, form.loan_tenure_years],
   );
 
   const goNext = () => {
@@ -2786,151 +2771,6 @@ export default function CalculatorClient({ today: initialToday }) {
 
               {step === 8 && (
                 <div className="space-y-8">
-                  <div>
-                    <div className="gsa-overline mb-4">Education loan</div>
-                    <Field
-                      label="Is an education loan required?"
-                      error={errors.education_loan_required}
-                      testId="field-education_loan_required"
-                    >
-                      <YesNo
-                        value={form.education_loan_required}
-                        onChange={(v) => set("education_loan_required", v)}
-                        testId="radio-education_loan_required"
-                      />
-                    </Field>
-                    {form.education_loan_required && (
-                      <div className="grid md:grid-cols-2 gap-6 mt-6">
-                        <Field
-                          label="Loan type"
-                          error={errors.loan_type}
-                          testId="field-loan_type"
-                        >
-                          <Select
-                            value={form.loan_type}
-                            onValueChange={(v) => set("loan_type", v)}
-                          >
-                            <SelectTrigger data-testid="select-loan_type">
-                              <SelectValue placeholder="Select loan type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["Secured", "Unsecured"].map((v) => (
-                                <SelectItem key={v} value={v}>
-                                  {v}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </Field>
-                        <Field
-                          label="Lender / Bank name"
-                          error={errors.lender_bank_name}
-                          testId="field-lender_bank_name"
-                        >
-                          <Input
-                            data-testid="input-lender_bank_name"
-                            value={form.lender_bank_name}
-                            onChange={(e) =>
-                              set("lender_bank_name", e.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Loan amount (₹)"
-                          error={errors.loan_amount_inr}
-                          testId="field-loan_amount_inr"
-                        >
-                          <Input
-                            data-testid="input-loan_amount_inr"
-                            type="number"
-                            value={form.loan_amount_inr}
-                            onChange={(e) =>
-                              set("loan_amount_inr", e.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Annual interest rate (%)"
-                          error={errors.annual_interest_rate}
-                          testId="field-annual_interest_rate"
-                        >
-                          <Input
-                            data-testid="input-annual_interest_rate"
-                            type="number"
-                            step="0.1"
-                            value={form.annual_interest_rate}
-                            onChange={(e) =>
-                              set("annual_interest_rate", e.target.value)
-                            }
-                            placeholder="e.g. 10.5"
-                          />
-                        </Field>
-                        <Field
-                          label="Loan tenure (years)"
-                          error={errors.loan_tenure_years}
-                          testId="field-loan_tenure_years"
-                        >
-                          <Input
-                            data-testid="input-loan_tenure_years"
-                            type="number"
-                            min="1"
-                            max="30"
-                            value={form.loan_tenure_years}
-                            onChange={(e) =>
-                              set("loan_tenure_years", e.target.value)
-                            }
-                            placeholder="e.g. 10"
-                          />
-                        </Field>
-                        {emi.monthlyEmi > 0 && (
-                          <div
-                            className="md:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted rounded-xl p-4"
-                            data-testid="emi-result-box"
-                          >
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-primary">
-                                ₹{emi.monthlyEmi.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Monthly EMI
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-secondary">
-                                ₹{emi.totalPayable.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Total Payable
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-secondary">
-                                ₹{emi.totalInterest.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Total Interest
-                              </div>
-                            </div>
-                            <div className="text-center">
-                              <div className="font-display font-black text-lg text-secondary">
-                                ₹{emi.principal.toLocaleString("en-IN")}
-                              </div>
-                              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">
-                                Principal
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        <div className="md:col-span-2" data-testid="loan-sponsor-engine-mount">
-                          <SponsorSection
-                            value={form.loan_sponsors}
-                            onChange={(v) => set("loan_sponsors", v)}
-                            requestedLoan={Number(form.loan_amount_inr) || 0}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
 
                   <div>
                     <div className="gsa-overline mb-4">Mist proof of funds</div>
@@ -3091,95 +2931,60 @@ export default function CalculatorClient({ today: initialToday }) {
                       />
                     </Field>
                     {form.education_loan_required && (
-                      <div className="grid md:grid-cols-2 gap-5 mt-5">
-                        <Field label="Loan type" error={errors.loan_type}>
-                          <Select
-                            value={form.loan_type}
-                            onValueChange={(v) => set("loan_type", v)}
+                      <div className="space-y-5 mt-5">
+                        <div className="grid md:grid-cols-2 gap-5">
+                          <Field
+                            label="Loan amount needed (₹)"
+                            error={errors.loan_amount_inr}
                           >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["Secured", "Unsecured"].map((v) => (
-                                <SelectItem key={v} value={v}>
-                                  {v}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </Field>
-                        <Field
-                          label="Loan amount (₹)"
-                          error={errors.loan_amount_inr}
-                        >
-                          <Input
-                            type="number"
-                            min="0"
-                            value={form.loan_amount_inr}
-                            onChange={(e) =>
-                              set("loan_amount_inr", e.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Annual interest rate (%)"
-                          error={errors.annual_interest_rate}
-                        >
-                          <Input
-                            type="number"
-                            min="0.1"
-                            max="30"
-                            step="0.1"
-                            value={form.annual_interest_rate}
-                            onChange={(e) =>
-                              set("annual_interest_rate", e.target.value)
-                            }
-                            placeholder="Enter lender's RBI-compliant quoted rate"
-                          />
-                        </Field>
-                        <Field
-                          label="Loan tenure (years)"
-                          error={errors.loan_tenure_years}
-                        >
-                          <Input
-                            type="number"
-                            min="1"
-                            max="30"
-                            value={form.loan_tenure_years}
-                            onChange={(e) =>
-                              set("loan_tenure_years", e.target.value)
-                            }
-                          />
-                        </Field>
-                        {emi.monthlyEmi > 0 && (
-                          <div className="md:col-span-2 rounded-xl bg-muted p-4 grid grid-cols-3 gap-4 text-center">
-                            <div>
-                              <p className="font-bold text-primary">
-                                ₹{emi.monthlyEmi.toLocaleString("en-IN")}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Monthly EMI
-                              </p>
-                            </div>
-                            <div>
-                              <p className="font-bold text-secondary">
-                                ₹{emi.totalInterest.toLocaleString("en-IN")}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Total interest
-                              </p>
-                            </div>
-                            <div>
-                              <p className="font-bold text-secondary">
-                                ₹{emi.totalPayable.toLocaleString("en-IN")}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                Total payable
-                              </p>
-                            </div>
-                          </div>
-                        )}
+                            <Input
+                              data-testid="input-loan_amount_inr"
+                              type="number"
+                              min="0"
+                              value={form.loan_amount_inr}
+                              onChange={(e) =>
+                                set("loan_amount_inr", e.target.value)
+                              }
+                              placeholder="e.g. 2000000"
+                            />
+                          </Field>
+                          <Field label="Loan sponsor">
+                            <Select
+                              value={form.loan_sponsor_id}
+                              onValueChange={(v) => set("loan_sponsor_id", v)}
+                            >
+                              <SelectTrigger data-testid="select-loan_sponsor_id">
+                                <SelectValue placeholder="Select sponsor" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {form.sponsors
+                                  .filter((sp) => sp.applicable)
+                                  .map((sp) => (
+                                    <SelectItem key={sp.id} value={sp.id}>
+                                      {sp.relation}
+                                      {sp.annual_income_inr
+                                        ? ` — ₹${Number(sp.annual_income_inr).toLocaleString("en-IN")}/yr`
+                                        : ""}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                          </Field>
+                        </div>
+                        <SponsorSection
+                          sponsors={form.sponsors.filter((sp) => sp.applicable)}
+                          sponsorId={form.loan_sponsor_id}
+                          onSelectSponsor={(v) => set("loan_sponsor_id", v)}
+                          requestedLoan={Number(form.loan_amount_inr) || 0}
+                          funds={{
+                            bankBalance:
+                              (Number(form.savings_amount_inr) || 0) +
+                              (Number(form.other_funds_amount_inr) || 0),
+                            fixedDeposit:
+                              Number(form.fixed_deposits_amount_inr) || 0,
+                            goldValue: Number(form.investments_amount_inr) || 0,
+                          }}
+                        />
                       </div>
                     )}
                   </div>
