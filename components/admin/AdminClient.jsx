@@ -39,6 +39,12 @@ function csvEscape(value) {
     return s;
 }
 
+// Short "PDF" / "JPG" style chip label for an uploaded file URL.
+function fileType(url) {
+    const ext = /\.([a-z0-9]{3,4})(?:[?#]|$)/i.exec(url || "");
+    return ext ? ext[1].toUpperCase() : "FILE";
+}
+
 // --- date/time helpers ---------------------------------------------------
 // created_at can be a Firestore Timestamp (has .toDate()), a plain
 // {seconds,...} object, or an ISO string (local-fallback records) — handle
@@ -379,10 +385,6 @@ function Dashboard({ onLogout }) {
                                             if (levels.length === 0) {
                                                 return <p className="text-sm text-muted-foreground">No education records in this application.</p>;
                                             }
-                                            const fileType = (url) => {
-                                                const ext = /\.([a-z0-9]{3,4})(?:[?#]|$)/i.exec(url || "");
-                                                return ext ? ext[1].toUpperCase() : "FILE";
-                                            };
                                             return (
                                                 <ul className="space-y-2">
                                                     {levels.map((l) => (
@@ -404,6 +406,59 @@ function Dashboard({ onLogout }) {
                                                         </li>
                                                     ))}
                                                 </ul>
+                                            );
+                                        })()}
+                                    </div>
+                                    <div>
+                                        <div className="gsa-overline mb-2">Sponsor documents</div>
+                                        {(() => {
+                                            const sponsors = (selected.form.sponsors || []).filter((s) => s.applicable);
+                                            if (sponsors.length === 0) {
+                                                return <p className="text-sm text-muted-foreground">No sponsors in this application.</p>;
+                                            }
+                                            return (
+                                                <div className="space-y-3" data-testid="sponsor-docs-section">
+                                                    {sponsors.map((s) => (
+                                                        <div key={s.id}>
+                                                            <div className="text-xs font-bold text-secondary mb-1.5">
+                                                                {s.relation}{s.employment_type ? ` — ${s.employment_type}` : ""}
+                                                                {s.annual_income_inr ? <span className="font-medium text-muted-foreground"> · ₹{Number(s.annual_income_inr).toLocaleString("en-IN")}/yr</span> : ""}
+                                                            </div>
+                                                            {(s.docs || []).length === 0 ? (
+                                                                <p className="text-sm text-muted-foreground">No documents listed for this sponsor.</p>
+                                                            ) : (
+                                                                <ul className="space-y-2">
+                                                                    {s.docs.map((doc) => (
+                                                                        <li key={doc.key} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2" data-testid={`sponsor-doc-row-${s.id}-${doc.key}`}>
+                                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                                <FileText size={15} className="text-primary shrink-0" />
+                                                                                <div className="min-w-0">
+                                                                                    <span className="block text-sm font-medium text-secondary truncate">{doc.label}</span>
+                                                                                    {doc.file_url && doc.file_name && (
+                                                                                        <span className="block text-[11px] text-muted-foreground truncate">{doc.file_name}</span>
+                                                                                    )}
+                                                                                    {doc.status === "no" && doc.remarks && (
+                                                                                        <span className="block text-[11px] text-muted-foreground truncate">Note: {doc.remarks}</span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                            {doc.file_url ? (
+                                                                                <div className="flex items-center gap-2 shrink-0">
+                                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-background border border-border rounded px-1.5 py-0.5">{fileType(doc.file_url)}</span>
+                                                                                    <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline" data-testid={`sponsor-doc-view-${s.id}-${doc.key}`}>
+                                                                                        <ExternalLink size={12} /> View
+                                                                                    </a>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <span className="text-xs text-muted-foreground shrink-0">{doc.status === "no" ? "Not available" : "Not uploaded"}</span>
+                                                                            )}
+                                                                        </li>
+                                                                    ))}
+                                                                </ul>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             );
                                         })()}
                                     </div>
