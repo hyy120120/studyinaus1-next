@@ -854,6 +854,8 @@ export default function CalculatorClient({ today: initialToday }) {
   if (!calculatorUnlocked)
     return <CalculatorVerificationGate onVerified={unlockCalculator} />;
 
+  const minDate = today.toISOString().split("T")[0];
+
   const maxDate = new Date();
   maxDate.setFullYear(maxDate.getFullYear() + 10);
 
@@ -1043,7 +1045,7 @@ export default function CalculatorClient({ today: initialToday }) {
                             onChange={(e) =>
                               set("passport_expiry_date", e.target.value)
                             }
-                            min={today}
+                            min={minDate}
                             max={max}
                           />
                         </Field>
