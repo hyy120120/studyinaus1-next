@@ -39,7 +39,7 @@ export function createSponsorProfile() {
     };
 }
 
-export default function SponsorSection({ value = [], onChange }) {
+export default function SponsorSection({ value = [], onChange, requestedLoan = 0 }) {
     const profiles = value.length > 0 ? value : [createSponsorProfile()];
     const [activeId, setActiveId] = useState(profiles[0].id);
     const active = profiles.find((p) => p.id === activeId) || profiles[0];
@@ -49,10 +49,10 @@ export default function SponsorSection({ value = [], onChange }) {
     const evaluations = useMemo(() => {
         const map = {};
         profiles.forEach((p) => {
-            map[p.id] = evaluateSponsorAgainstBanks(p, BANKS);
+            map[p.id] = evaluateSponsorAgainstBanks(p, BANKS, requestedLoan);
         });
         return map;
-    }, [profiles]);
+    }, [profiles, requestedLoan]);
     const activeEvaluation = evaluations[active.id];
     const chipScores = useMemo(() => {
         const s = {};

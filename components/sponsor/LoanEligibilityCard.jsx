@@ -68,6 +68,43 @@ export default function LoanEligibilityCard({ evaluation }) {
                 <Stat label="Est. loan amount" value={best ? `₹${best.estLoan.toLocaleString("en-IN")}` : "—"} testId="card-est-loan" />
             </div>
 
+            {/* Requested amount vs what banks will approve */}
+            {evaluation.requested > 0 && (() => {
+                const cov = evaluation.bestAffordability;
+                const styles = {
+                    fully_covered: "border-green-300 bg-green-50 text-green-800",
+                    mostly_covered: "border-emerald-300 bg-emerald-50 text-emerald-800",
+                    partially_covered: "border-amber-300 bg-amber-50 text-amber-800",
+                    shortfall: "border-red-300 bg-red-50 text-red-800",
+                    no_target: "border-border bg-background text-secondary",
+                };
+                const label = {
+                    fully_covered: "Requested amount fully covered",
+                    mostly_covered: "Almost covered — small gap",
+                    partially_covered: "Partly covered — arrange the gap",
+                    shortfall: "Large shortfall — improve sponsor profile",
+                    no_target: "Enter a loan amount above to compare",
+                };
+                return (
+                    <div className={`rounded-xl border p-3 space-y-2 ${styles[cov.verdict] || styles.no_target}`} data-testid="requested-vs-approved">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                            <span className="font-bold">{label[cov.verdict] || label.no_target}</span>
+                            <span className="text-xs font-semibold">{cov.coveredPct}% covered</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-white/70 border border-border overflow-hidden">
+                            <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${Math.min(100, cov.coveredPct)}%` }} />
+                        </div>
+                        <p className="text-xs">
+                            Requested <span className="font-bold">₹{cov.requested.toLocaleString("en-IN")}</span>
+                            {" · "}banks can approve up to <span className="font-bold">₹{cov.approved.toLocaleString("en-IN")}</span>
+                            {cov.shortfall > 0 && (
+                                <>{" · "}shortfall <span className="font-bold">₹{cov.shortfall.toLocaleString("en-IN")}</span></>
+                            )}
+                        </p>
+                    </div>
+                );
+            })()}
+
             {best ? (
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5" data-testid="card-best-bank">
                     <BadgeIndianRupee size={13} className="text-primary" />

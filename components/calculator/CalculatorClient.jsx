@@ -2667,8 +2667,127 @@ export default function CalculatorClient({ today: initialToday }) {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
 
-                  <div className="pt-4 border-t border-border">
+              {/* STEP 6 — MARITAL DETAILS */}
+              {step === 3 && (
+                <div className="grid md:grid-cols-2 gap-6 items-start">
+                  {/* Left column — marriage + spouse questions */}
+                  <div className="space-y-6">
+                    <Field
+                      label="Is the student married?"
+                      error={errors.is_married}
+                      testId="field-is_married"
+                    >
+                      <YesNo
+                        value={form.is_married}
+                        onChange={(v) => set("is_married", v)}
+                        testId="radio-is_married"
+                      />
+                    </Field>
+                    {form.is_married && (
+                      <>
+                        <Field
+                          label="Spouse will accompany?"
+                          testId="field-spouse_will_accompany"
+                        >
+                          <YesNo
+                            value={form.spouse_will_accompany}
+                            onChange={(v) => set("spouse_will_accompany", v)}
+                            testId="radio-spouse_will_accompany"
+                          />
+                        </Field>
+                        <Field
+                          label="Spouse qualification (optional)"
+                          testId="field-spouse_qualification"
+                        >
+                          <Input
+                            data-testid="input-spouse_qualification"
+                            value={form.spouse_qualification}
+                            onChange={(e) =>
+                              set("spouse_qualification", e.target.value)
+                            }
+                          />
+                        </Field>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Right column — child question, count directly below it */}
+                  <div className="space-y-6">
+                    {form.is_married && (
+                      <>
+                        <Field
+                          label="Does the student have a child?"
+                          testId="field-has_child"
+                        >
+                          <YesNo
+                            value={form.has_child}
+                            onChange={(v) => set("has_child", v)}
+                            testId="radio-has_child"
+                          />
+                        </Field>
+                        {/*
+                          Child count sits directly under the child question.
+                          Its slot is reserved (invisible) when not applicable,
+                          so toggling Yes/No never moves other fields.
+                        */}
+                        <div
+                          className={
+                            form.has_child ? "" : "hidden md:block md:invisible"
+                          }
+                          aria-hidden={!form.has_child}
+                        >
+                          <Field
+                            label="Number of children"
+                            error={errors.child_count}
+                            testId="field-child_count"
+                          >
+                            <Input
+                              type="number"
+                              min="1"
+                              disabled={!form.has_child}
+                              value={form.child_count}
+                              onChange={(e) =>
+                                set("child_count", e.target.value)
+                              }
+                            />
+                          </Field>
+                        </div>
+                        <Field
+                          label="Spouse present activity"
+                          error={errors.spouse_present_activity}
+                          testId="field-spouse_activity"
+                        >
+                          <Select
+                            value={form.spouse_activity}
+                            onValueChange={(v) => set("spouse_activity", v)}
+                          >
+                            <SelectTrigger data-testid="select-spouse_activity">
+                              <SelectValue placeholder="Select an option" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["Working", "Studying", "Unemployed"].map(
+                                (v) => (
+                                  <SelectItem key={v} value={v}>
+                                    {v}
+                                  </SelectItem>
+                                ),
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {step === 8 && (
+                <div className="space-y-8">
+                  <div>
+                    <div className="gsa-overline mb-4">Education loan</div>
                     <Field
                       label="Is an education loan required?"
                       error={errors.education_loan_required}
@@ -2806,130 +2925,13 @@ export default function CalculatorClient({ today: initialToday }) {
                           <SponsorSection
                             value={form.loan_sponsors}
                             onChange={(v) => set("loan_sponsors", v)}
+                            requestedLoan={Number(form.loan_amount_inr) || 0}
                           />
                         </div>
                       </div>
                     )}
                   </div>
-                </div>
-              )}
 
-              {/* STEP 6 — MARITAL DETAILS */}
-              {step === 3 && (
-                <div className="grid md:grid-cols-2 gap-6 items-start">
-                  {/* Left column — marriage + spouse questions */}
-                  <div className="space-y-6">
-                    <Field
-                      label="Is the student married?"
-                      error={errors.is_married}
-                      testId="field-is_married"
-                    >
-                      <YesNo
-                        value={form.is_married}
-                        onChange={(v) => set("is_married", v)}
-                        testId="radio-is_married"
-                      />
-                    </Field>
-                    {form.is_married && (
-                      <>
-                        <Field
-                          label="Spouse will accompany?"
-                          testId="field-spouse_will_accompany"
-                        >
-                          <YesNo
-                            value={form.spouse_will_accompany}
-                            onChange={(v) => set("spouse_will_accompany", v)}
-                            testId="radio-spouse_will_accompany"
-                          />
-                        </Field>
-                        <Field
-                          label="Spouse qualification (optional)"
-                          testId="field-spouse_qualification"
-                        >
-                          <Input
-                            data-testid="input-spouse_qualification"
-                            value={form.spouse_qualification}
-                            onChange={(e) =>
-                              set("spouse_qualification", e.target.value)
-                            }
-                          />
-                        </Field>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Right column — child question, count directly below it */}
-                  <div className="space-y-6">
-                    {form.is_married && (
-                      <>
-                        <Field
-                          label="Does the student have a child?"
-                          testId="field-has_child"
-                        >
-                          <YesNo
-                            value={form.has_child}
-                            onChange={(v) => set("has_child", v)}
-                            testId="radio-has_child"
-                          />
-                        </Field>
-                        {/*
-                          Child count sits directly under the child question.
-                          Its slot is reserved (invisible) when not applicable,
-                          so toggling Yes/No never moves other fields.
-                        */}
-                        <div
-                          className={
-                            form.has_child ? "" : "hidden md:block md:invisible"
-                          }
-                          aria-hidden={!form.has_child}
-                        >
-                          <Field
-                            label="Number of children"
-                            error={errors.child_count}
-                            testId="field-child_count"
-                          >
-                            <Input
-                              type="number"
-                              min="1"
-                              disabled={!form.has_child}
-                              value={form.child_count}
-                              onChange={(e) =>
-                                set("child_count", e.target.value)
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <Field
-                          label="Spouse present activity"
-                          error={errors.spouse_present_activity}
-                          testId="field-spouse_activity"
-                        >
-                          <Select
-                            value={form.spouse_activity}
-                            onValueChange={(v) => set("spouse_activity", v)}
-                          >
-                            <SelectTrigger data-testid="select-spouse_activity">
-                              <SelectValue placeholder="Select an option" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["Working", "Studying", "Unemployed"].map(
-                                (v) => (
-                                  <SelectItem key={v} value={v}>
-                                    {v}
-                                  </SelectItem>
-                                ),
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </Field>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {step === 8 && (
-                <div className="space-y-8">
                   <div>
                     <div className="gsa-overline mb-4">Mist proof of funds</div>
                     <p className="text-sm text-muted-foreground mb-4">

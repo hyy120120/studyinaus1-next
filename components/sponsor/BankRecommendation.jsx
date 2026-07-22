@@ -14,7 +14,7 @@ const BAND_STYLES = {
 };
 
 export default function BankRecommendation({ match }) {
-    const { bank, interestRate, estLoan, approvalPct, approvalBand, reasons = [] } = match;
+    const { bank, interestRate, estLoan, approvalPct, approvalBand, affordability, reasons = [] } = match;
     const eligible = reasons.length === 0;
     const bandStyle = BAND_STYLES[approvalBand?.key] || BAND_STYLES.medium;
 
@@ -64,6 +64,15 @@ export default function BankRecommendation({ match }) {
                             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Max tenure</div>
                         </div>
                     </div>
+                    {affordability?.requested > 0 && (
+                        <p className="text-xs rounded-lg bg-muted/60 px-2.5 py-1.5 text-secondary" data-testid={`bank-coverage-${bank.id}`}>
+                            Approves <span className="font-bold">₹{affordability.approved.toLocaleString("en-IN")}</span>
+                            {" "}of your <span className="font-bold">₹{affordability.requested.toLocaleString("en-IN")}</span> request
+                            {affordability.shortfall > 0 && (
+                                <span className="text-destructive font-semibold"> — ₹{affordability.shortfall.toLocaleString("en-IN")} gap</span>
+                            )}
+                        </p>
+                    )}
                     <div>
                         <div className="flex justify-between text-[11px] text-muted-foreground mb-1">
                             <span>Approval chance</span>
