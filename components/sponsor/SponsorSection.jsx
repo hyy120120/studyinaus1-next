@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import LoanEligibilityCard from "./LoanEligibilityCard";
-import BankRecommendation from "./BankRecommendation";
 
 // Map the sponsor step's occupation labels onto the engine's occupation keys.
 const EMPLOYMENT_TYPE_MAP = {
@@ -82,7 +81,7 @@ export default function SponsorSection({ sponsors = [], sponsorId, onSelectSpons
                     </span>
                     <div>
                         <h3 className="font-display font-bold text-base sm:text-lg text-secondary">
-                            Which bank can offer how much?
+                            Your estimated loan eligibility
                         </h3>
                         <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
                             Estimated from your sponsor's income (entered in the Sponsor Income step) against your requested loan amount.
@@ -119,37 +118,10 @@ export default function SponsorSection({ sponsors = [], sponsorId, onSelectSpons
                     {evaluation && (
                         <>
                             <LoanEligibilityCard evaluation={evaluation} />
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="font-bold text-sm text-secondary">Bank recommendations</h4>
-                                    <span className="text-xs text-muted-foreground" data-testid="bank-match-count">
-                                        {evaluation.eligible.length} of {BANKS.length} banks match
-                                    </span>
-                                </div>
-                                {evaluation.eligible.length > 0 && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3" data-testid="eligible-bank-list">
-                                        {evaluation.eligible.map((m) => (
-                                            <BankRecommendation key={m.bank.id} match={m} />
-                                        ))}
-                                    </div>
-                                )}
-                                {evaluation.rejected.length > 0 && (
-                                    <details className="rounded-xl border border-border bg-muted/30 p-3" data-testid="rejected-bank-list">
-                                        <summary className="cursor-pointer text-xs font-semibold text-muted-foreground select-none">
-                                            {evaluation.rejected.length} bank{evaluation.rejected.length > 1 ? "s" : ""} not matching — see why
-                                        </summary>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                                            {evaluation.rejected.map((m) => (
-                                                <BankRecommendation key={m.bank.id} match={m} />
-                                            ))}
-                                        </div>
-                                    </details>
-                                )}
-                                <p className="text-[11px] text-muted-foreground">
-                                    Approximation only — CIBIL score and existing EMIs are not verified here, and the
-                                    final sanction always depends on the bank's own assessment.
-                                </p>
-                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                                Approximation only — CIBIL score and existing EMIs are not verified here, and the
+                                final sanction always depends on the bank's own assessment.
+                            </p>
                         </>
                     )}
                 </>

@@ -3,7 +3,7 @@
 // Headline card for the loan engine: sponsor strength, disposable income,
 // FOIR, eligible EMI, best estimated loan amount and approval probability.
 
-import { Gauge, BadgeIndianRupee, Banknote, TrendingUp } from "lucide-react";
+import { Gauge, BadgeIndianRupee, TrendingUp } from "lucide-react";
 
 const BAND_STYLES = {
     very_high: "bg-green-100 text-green-800 border-green-300",
@@ -108,14 +108,14 @@ export default function LoanEligibilityCard({ evaluation }) {
             {best ? (
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5" data-testid="card-best-bank">
                     <BadgeIndianRupee size={13} className="text-primary" />
-                    Best estimate: <Banknote size={13} className="text-primary" />
+                    Best estimate:
                     <span className="font-semibold text-secondary">
-                        {best.bank.name} — ₹{best.estLoan.toLocaleString("en-IN")} at {best.interestRate}% for up to {best.bank.maxTenureYears} years
+                        up to ₹{best.estLoan.toLocaleString("en-IN")} at about {best.interestRate}% interest for up to {best.bank.maxTenureYears} years
                     </span>
                 </p>
             ) : (
                 <p className="text-xs text-muted-foreground" data-testid="card-no-bank">
-                    No bank currently matches this profile — see the reasons in the bank list below and try improving CIBIL, income or reducing existing EMIs.
+                    This profile does not qualify for a loan estimate right now — try a higher sponsor income or a smaller loan amount.
                 </p>
             )}
         </div>
