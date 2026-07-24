@@ -7,7 +7,7 @@ backend fully removed. You now own 100% of the code.
 
 ## What changed vs. the original
 
-- **Framework**: Create React App + react-router-dom + craco → **Next.js App
+- *Framework**: Create React App + react-router-dom + craco → **Next.js App
   Router**, file-based routing, native `metadata` API for SEO (replaces the
   `useSEO` hook — better for real SEO since it's server-rendered).
 - **Backend**: The Python/FastAPI + MongoDB backend (`backend/`) is gone.
