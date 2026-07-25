@@ -65,7 +65,9 @@ import {
 } from "@/lib/educationTimeline";
 import {
   englishExamDateBounds,
+  englishExamDateFloors,
   englishScoreValidityYears,
+  minimumEnglishTestAge,
   validateEnglishExamDate,
 } from "@/lib/englishExamTimeline";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
@@ -360,27 +362,61 @@ const OTHER_YEAR_OPTION = "__other_year__";
 // Date input that refuses impossible years while typing. Browser date
 // controls let a keyboard user hammer in year fragments like 656565; the
 // typed value is checked against the min/max year window before it can
-// land in form state, so junk years simply snap back to the last valid date.
-function SafeDateInput({ min, max, value, onChange, ...props }) {
+// land in form state, and a rejected attempt shows an inline message so
+// the user knows why the field snapped back instead of guessing.
+// Callers can pass tooEarlyWarning / tooLateWarning to explain the real
+// rule (age, validity window, …) instead of a bare "Year must be …".
+function SafeDateInput({ min, max, value, onChange, tooEarlyWarning, tooLateWarning, ...props }) {
   const minYear = min ? Number(String(min).slice(0, 4)) : 1900;
   const maxYear = max ? Number(String(max).slice(0, 4)) : 2100;
+  const [typingWarning, setTypingWarning] = useState("");
+  const inputTestId = props["data-testid"];
   return (
-    <Input
-      type="date"
-      value={value}
-      min={min}
-      max={max}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (v) {
-          const year = Number(String(v).split("-")[0]);
-          if (!Number.isInteger(year) || year < minYear || year > maxYear)
-            return;
-        }
-        onChange(e);
-      }}
-      {...props}
-    />
+    <>
+      <Input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v) {
+            const year = Number(String(v).split("-")[0]);
+            if (!Number.isInteger(year)) {
+              setTypingWarning("Enter a valid date.");
+              return;
+            }
+            // Chrome commits the year segment per keystroke while typing
+            // ("2" → 0002 → 0020 → 0202 → 2026). Years under 1000 are those
+            // intermediate keystrokes — let them through silently or the
+            // field wipes itself on the first digit. Only a completed
+            // 4+-digit year outside the window is junk (656565, 1800, 2040…).
+            if (year >= 1000) {
+              if (year < minYear) {
+                setTypingWarning(tooEarlyWarning || `Year must be ${minYear} or later.`);
+                return;
+              }
+              if (year > maxYear) {
+                setTypingWarning(tooLateWarning || `Year must be ${maxYear} or earlier.`);
+                return;
+              }
+            }
+          }
+          setTypingWarning("");
+          onChange(e);
+        }}
+        {...props}
+      />
+      {typingWarning && (
+        <p
+          className="mt-1 text-xs text-destructive"
+          role="alert"
+          data-testid={inputTestId ? `${inputTestId}-warning` : undefined}
+        >
+          {typingWarning}
+        </p>
+      )}
+    </>
   );
 }
 
@@ -806,6 +842,22 @@ export default function CalculatorClient({ today: initialToday }) {
     [form.dob, form.english_test, today],
   );
 
+  // Which rule really blocks an early exam date: the minimum test age
+  // (born-too-late) or the score-validity window (taken-too-long-ago)?
+  // The typing warning must explain the actual rule, not just a year.
+  const examDateTooEarlyWarning = useMemo(() => {
+    const { eligibleFrom, validityFloor } = englishExamDateFloors(
+      form.dob,
+      form.english_test,
+      { today },
+    );
+    if (eligibleFrom && eligibleFrom > validityFloor) {
+      return `You must be at least ${minimumEnglishTestAge(form.english_test)} years old on the exam date.`;
+    }
+    const years = englishScoreValidityYears(form.english_test);
+    return `${form.english_test} scores are valid for ${years} years only — enter a ${form.english_test} exam date within the last ${years} years.`;
+  }, [form.dob, form.english_test, today]);
+
   const goNext = () => {
     const stepErrors = validateCalculatorStep(step, form);
     if (Object.keys(stepErrors).length > 0) {
@@ -1031,6 +1083,7 @@ export default function CalculatorClient({ today: initialToday }) {
                         value={form.dob}
                         onChange={(e) => setDob(e.target.value)}
                         max={today}
+                        tooLateWarning="Date of birth cannot be in the future."
                       />
                     </Field>
                     <Field
@@ -1077,6 +1130,7 @@ export default function CalculatorClient({ today: initialToday }) {
                               set("passport_issue_date", e.target.value)
                             }
                             max={today}
+                            tooLateWarning="Issue date cannot be in the future."
                           />
                         </Field>
                         <Field
@@ -1092,6 +1146,8 @@ export default function CalculatorClient({ today: initialToday }) {
                             }
                             min={today}
                             max={PASSPORT_MAX_EXPIRY}
+                            tooEarlyWarning="This passport has already expired — enter a future expiry date."
+                            tooLateWarning={`Passports are valid for a maximum of 10 years — expiry cannot be beyond ${CURRENT_YEAR + 10}.`}
                           />
                         </Field>
                       </div>
@@ -1546,6 +1602,7 @@ export default function CalculatorClient({ today: initialToday }) {
                           set("tentative_exam_date", e.target.value)
                         }
                         min={tentativeExamDateBounds.min}
+                        tooEarlyWarning="Tentative exam date must be in the future."
                       />
                     </Field>
                   ) : (
@@ -1575,6 +1632,8 @@ export default function CalculatorClient({ today: initialToday }) {
                           onChange={(e) => set("exam_date", e.target.value)}
                           min={completedExamDateBounds.min}
                           max={completedExamDateBounds.max}
+                          tooEarlyWarning={examDateTooEarlyWarning}
+                          tooLateWarning="Exam date cannot be in the future."
                         />
                       </Field>
                       <Field
@@ -2224,6 +2283,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                   )
                                 }
                                 max={today}
+                                tooLateWarning="Date of joining cannot be in the future."
                               />
                               </Field>
                               <Field label="Currently working here?">
@@ -2251,6 +2311,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                       )
                                     }
                                     max={today}
+                                    tooLateWarning="Last working day cannot be in the future."
                                   />
                                 </Field>
                               )}
@@ -2665,47 +2726,46 @@ export default function CalculatorClient({ today: initialToday }) {
                           testId="radio-previous_visa_refusal"
                         />
                       </Field>
+                      {form.previous_visa_refusal && (
+                        <div className="mt-5 grid gap-5 rounded-xl border border-border bg-muted/40 p-4 md:grid-cols-2">
+                          <Field
+                            label="Country of refusal"
+                            error={errors.refusal_country}
+                            testId="field-refusal_country"
+                          >
+                            <Input
+                              data-testid="input-refusal_country"
+                              value={form.refusal_country}
+                              onChange={(e) =>
+                                set("refusal_country", e.target.value)
+                              }
+                            />
+                          </Field>
+                          <Field
+                            label="Stated reason for refusal"
+                            error={errors.refusal_reason}
+                            testId="field-refusal_reason"
+                          >
+                            <Textarea
+                              data-testid="input-refusal_reason"
+                              value={form.refusal_reason}
+                              onChange={(e) =>
+                                set("refusal_reason", e.target.value)
+                              }
+                              placeholder="e.g. GTE concerns, insufficient funds"
+                            />
+                          </Field>
+                        </div>
+                      )}
                     </div>
-                    {form.previous_visa_refusal && (
-                      <div className="grid gap-5 rounded-xl border border-border bg-muted/40 p-5 md:grid-cols-2 md:p-6">
-                        <Field
-                          label="Country of refusal"
-                          error={errors.refusal_country}
-                          testId="field-refusal_country"
-                        >
-                          <Input
-                            data-testid="input-refusal_country"
-                            value={form.refusal_country}
-                            onChange={(e) =>
-                              set("refusal_country", e.target.value)
-                            }
-                          />
-                        </Field>
-                        <Field
-                          label="Stated reason for refusal"
-                          error={errors.refusal_reason}
-                          testId="field-refusal_reason"
-                        >
-                          <Textarea
-                            data-testid="input-refusal_reason"
-                            value={form.refusal_reason}
-                            onChange={(e) =>
-                              set("refusal_reason", e.target.value)
-                            }
-                            placeholder="e.g. GTE concerns, insufficient funds"
-                          />
-                        </Field>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
 
               {/* STEP 6 — MARITAL DETAILS */}
               {step === 3 && (
-                <div className="grid md:grid-cols-2 gap-6 items-start">
-                  {/* Left column — marriage + spouse questions */}
-                  <div className="space-y-6">
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-border p-5 md:p-6">
                     <Field
                       label="Is the student married?"
                       error={errors.is_married}
@@ -2717,38 +2777,11 @@ export default function CalculatorClient({ today: initialToday }) {
                         testId="radio-is_married"
                       />
                     </Field>
-                    {form.is_married && (
-                      <div className="space-y-6 rounded-xl border border-border bg-muted/40 p-4">
-                        <Field
-                          label="Spouse will accompany?"
-                          testId="field-spouse_will_accompany"
-                        >
-                          <YesNo
-                            value={form.spouse_will_accompany}
-                            onChange={(v) => set("spouse_will_accompany", v)}
-                            testId="radio-spouse_will_accompany"
-                          />
-                        </Field>
-                        <Field
-                          label="Spouse qualification (optional)"
-                          testId="field-spouse_qualification"
-                        >
-                          <Input
-                            data-testid="input-spouse_qualification"
-                            value={form.spouse_qualification}
-                            onChange={(e) =>
-                              set("spouse_qualification", e.target.value)
-                            }
-                          />
-                        </Field>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Right column — child question, count directly below it */}
-                  <div className="space-y-6">
-                    {form.is_married && (
-                      <div className="space-y-6 rounded-xl border border-border bg-muted/40 p-4">
+                  {form.is_married && (
+                    <>
+                      <div className="rounded-xl border border-border p-5 md:p-6">
                         <Field
                           label="Does the student have a child?"
                           testId="field-has_child"
@@ -2759,59 +2792,77 @@ export default function CalculatorClient({ today: initialToday }) {
                             testId="radio-has_child"
                           />
                         </Field>
-                        {/*
-                          Child count sits directly under the child question.
-                          Its slot is reserved (invisible) when not applicable,
-                          so toggling Yes/No never moves other fields.
-                        */}
-                        <div
-                          className={
-                            form.has_child ? "" : "hidden md:block md:invisible"
-                          }
-                          aria-hidden={!form.has_child}
-                        >
-                          <Field
-                            label="Number of children"
-                            error={errors.child_count}
-                            testId="field-child_count"
-                          >
-                            <Input
-                              type="number"
-                              min="1"
-                              disabled={!form.has_child}
-                              value={form.child_count}
-                              onChange={(e) =>
-                                set("child_count", e.target.value)
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <Field
-                          label="Spouse present activity"
-                          error={errors.spouse_present_activity}
-                          testId="field-spouse_activity"
-                        >
-                          <Select
-                            value={form.spouse_activity}
-                            onValueChange={(v) => set("spouse_activity", v)}
-                          >
-                            <SelectTrigger data-testid="select-spouse_activity">
-                              <SelectValue placeholder="Select an option" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["Working", "Studying", "Unemployed"].map(
-                                (v) => (
-                                  <SelectItem key={v} value={v}>
-                                    {v}
-                                  </SelectItem>
-                                ),
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </Field>
+                        {form.has_child && (
+                          <div className="mt-5 rounded-xl border border-border bg-muted/40 p-5">
+                            <Field
+                              label="Number of children"
+                              error={errors.child_count}
+                              testId="field-child_count"
+                            >
+                              <Input
+                                type="number"
+                                min="1"
+                                value={form.child_count}
+                                onChange={(e) => set("child_count", e.target.value)}
+                              />
+                            </Field>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+
+                      <div className="rounded-xl border border-border p-5 md:p-6">
+                        <Field
+                          label="Spouse will accompany?"
+                          testId="field-spouse_will_accompany"
+                        >
+                          <YesNo
+                            value={form.spouse_will_accompany}
+                            onChange={(v) => set("spouse_will_accompany", v)}
+                            testId="radio-spouse_will_accompany"
+                          />
+                        </Field>
+                        {form.spouse_will_accompany && (
+                          <div className="mt-5 grid sm:grid-cols-2 gap-4 rounded-xl border border-border bg-muted/40 p-5">
+                            <Field
+                              label="Spouse qualification (optional)"
+                              testId="field-spouse_qualification"
+                            >
+                              <Input
+                                data-testid="input-spouse_qualification"
+                                value={form.spouse_qualification}
+                                onChange={(e) =>
+                                  set("spouse_qualification", e.target.value)
+                                }
+                              />
+                            </Field>
+                            <Field
+                              label="Spouse present activity"
+                              error={errors.spouse_present_activity}
+                              testId="field-spouse_activity"
+                            >
+                              <Select
+                                value={form.spouse_activity}
+                                onValueChange={(v) => set("spouse_activity", v)}
+                              >
+                                <SelectTrigger data-testid="select-spouse_activity">
+                                  <SelectValue placeholder="Select an option" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {["Working", "Studying", "Unemployed"].map(
+                                    (v) => (
+                                      <SelectItem key={v} value={v}>
+                                        {v}
+                                      </SelectItem>
+                                    ),
+                                  )}
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
