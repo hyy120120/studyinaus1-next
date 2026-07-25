@@ -16,8 +16,6 @@ import {
   ShieldCheck,
   Upload,
   FileText,
-  User,
-  Phone,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -67,6 +65,7 @@ import {
 } from "@/lib/educationTimeline";
 import {
   englishExamDateBounds,
+  englishScoreValidityYears,
   validateEnglishExamDate,
 } from "@/lib/englishExamTimeline";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
@@ -97,6 +96,9 @@ const STEPS = [
 ];
 
 const CURRENT_YEAR = new Date().getFullYear();
+// Passports are issued for a maximum of 10 years, so an expiry year beyond
+// (current year + 10) can never be correct — used for the date-input ceiling.
+const PASSPORT_MAX_EXPIRY = `${CURRENT_YEAR + 10}-12-31`;
 const EMPLOYMENT_STATUSES = [
   "Employed",
   "Self-employed",
@@ -218,6 +220,8 @@ const INITIAL = {
   age: 0,
   nationality: "Indian",
   has_passport: false,
+  passport_number: "",
+  passport_place_of_issue: "",
   passport_issue_date: "",
   passport_expiry_date: "",
   intended_course: "",
@@ -352,6 +356,33 @@ function previousEducationEnd(education, key) {
 }
 
 const OTHER_YEAR_OPTION = "__other_year__";
+
+// Date input that refuses impossible years while typing. Browser date
+// controls let a keyboard user hammer in year fragments like 656565; the
+// typed value is checked against the min/max year window before it can
+// land in form state, so junk years simply snap back to the last valid date.
+function SafeDateInput({ min, max, value, onChange, ...props }) {
+  const minYear = min ? Number(String(min).slice(0, 4)) : 1900;
+  const maxYear = max ? Number(String(max).slice(0, 4)) : 2100;
+  return (
+    <Input
+      type="date"
+      value={value}
+      min={min}
+      max={max}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v) {
+          const year = Number(String(v).split("-")[0]);
+          if (!Number.isInteger(year) || year < minYear || year > maxYear)
+            return;
+        }
+        onChange(e);
+      }}
+      {...props}
+    />
+  );
+}
 
 // Shared year picker for education dates. Shows only the most realistic
 // years (see educationYears) plus an "Other year…" escape hatch that reveals
@@ -489,10 +520,28 @@ function calcAge(dobStr) {
   return age;
 }
 
+// Dev-only switch: skip the email-OTP verification gate. Enable locally with
+//   NEXT_PUBLIC_CALCULATOR_BYPASS_VERIFICATION=true
+// in .env.local and restart the dev server. Never set this in production.
+const DEV_BYPASS_VERIFICATION =
+  process.env.NEXT_PUBLIC_CALCULATOR_BYPASS_VERIFICATION === "true";
+
 export default function CalculatorClient({ today: initialToday }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [form, setForm] = useState(INITIAL);
+  const [form, setForm] = useState(() =>
+    DEV_BYPASS_VERIFICATION
+      ? {
+          ...INITIAL,
+          first_name: "Dev",
+          last_name: "Tester",
+          email: "dev@gmail.com",
+          phone: "9999999999",
+          privacy_consent: true,
+          terms_consent: true,
+        }
+      : INITIAL,
+  );
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -500,7 +549,9 @@ export default function CalculatorClient({ today: initialToday }) {
   const [managedCourses, setManagedCourses] = useState(null);
   const [otherCourseFields, setOtherCourseFields] = useState({});
   const [docUploading, setDocUploading] = useState({});
-  const [calculatorUnlocked, setCalculatorUnlocked] = useState(false);
+  const [calculatorUnlocked, setCalculatorUnlocked] = useState(
+    DEV_BYPASS_VERIFICATION,
+  );
 
   useEffect(() => {
     setToday(new Date().toISOString().slice(0, 10));
@@ -706,10 +757,7 @@ export default function CalculatorClient({ today: initialToday }) {
         ),
       )
       .catch((err) => {
-        console.warn(
-          "Could not load managed courses, using local catalog:",
-          err,
-        );
+        console.warn("Could not load managed courses, using local catalog:", err);
         setManagedCourses([]);
       });
   }, []);
@@ -725,8 +773,7 @@ export default function CalculatorClient({ today: initialToday }) {
   // Intended-course list adapts to the highest completed qualification:
   // 10th/12th → Bachelor-level courses, Graduation → Master/PhD-level courses.
   const intendedCourseCatalog = useMemo(
-    () =>
-      filterCoursesForQualification(courseCatalog, form.highest_qualification),
+    () => filterCoursesForQualification(courseCatalog, form.highest_qualification),
     [courseCatalog, form.highest_qualification],
   );
   const courseLevelHint = QUALIFICATION_LEVEL_HINT[form.highest_qualification];
@@ -801,7 +848,13 @@ export default function CalculatorClient({ today: initialToday }) {
       const result = { form: formForScoring, ...scoring, created_at };
 
       let id;
-      if (isFirebaseConfigured) {
+      if (DEV_BYPASS_VERIFICATION) {
+        // Dev mode (NEXT_PUBLIC_CALCULATOR_BYPASS_VERIFICATION=true):
+        // run scoring and route to the report as usual, but never write
+        // test submissions or consent logs into Firestore. The result page
+        // reads the sessionStorage entry written below, so it renders fine.
+        id = `dev-${Date.now()}`;
+      } else if (isFirebaseConfigured) {
         const ref = await addDoc(
           collection(db, COLLECTIONS.VISA_APPLICATIONS),
           {
@@ -853,11 +906,6 @@ export default function CalculatorClient({ today: initialToday }) {
 
   if (!calculatorUnlocked)
     return <CalculatorVerificationGate onVerified={unlockCalculator} />;
-
-  const maxDate = new Date();
-  maxDate.setFullYear(maxDate.getFullYear() + 10);
-
-  const max = maxDate.toISOString().split("T")[0];
 
   return (
     <div data-testid="calculator-page" className="bg-background min-h-screen">
@@ -978,9 +1026,8 @@ export default function CalculatorClient({ today: initialToday }) {
                       error={errors.dob}
                       testId="field-dob"
                     >
-                      <Input
+                      <SafeDateInput
                         data-testid="input-dob"
-                        type="date"
                         value={form.dob}
                         onChange={(e) => setDob(e.target.value)}
                         max={today}
@@ -1007,6 +1054,8 @@ export default function CalculatorClient({ today: initialToday }) {
                         onChange={(v) => {
                           set("has_passport", v);
                           if (!v) {
+                            set("passport_number", "");
+                            set("passport_place_of_issue", "");
                             set("passport_issue_date", "");
                             set("passport_expiry_date", "");
                           }
@@ -1021,9 +1070,8 @@ export default function CalculatorClient({ today: initialToday }) {
                           error={errors.passport_issue_date}
                           testId="field-passport_issue_date"
                         >
-                          <Input
+                          <SafeDateInput
                             data-testid="input-passport_issue_date"
-                            type="date"
                             value={form.passport_issue_date}
                             onChange={(e) =>
                               set("passport_issue_date", e.target.value)
@@ -1036,15 +1084,14 @@ export default function CalculatorClient({ today: initialToday }) {
                           error={errors.passport_expiry_date}
                           testId="field-passport_expiry_date"
                         >
-                          <Input
+                          <SafeDateInput
                             data-testid="input-passport_expiry_date"
-                            type="date"
                             value={form.passport_expiry_date}
                             onChange={(e) =>
                               set("passport_expiry_date", e.target.value)
                             }
                             min={today}
-                            max={max}
+                            max={PASSPORT_MAX_EXPIRY}
                           />
                         </Field>
                       </div>
@@ -1492,9 +1539,8 @@ export default function CalculatorClient({ today: initialToday }) {
                       error={errors.tentative_exam_date}
                       testId="field-tentative_exam_date"
                     >
-                      <Input
+                      <SafeDateInput
                         data-testid="input-tentative_exam_date"
-                        type="date"
                         value={form.tentative_exam_date}
                         onChange={(e) =>
                           set("tentative_exam_date", e.target.value)
@@ -1519,12 +1565,12 @@ export default function CalculatorClient({ today: initialToday }) {
                       </Field>
                       <Field
                         label="Exam date"
+                        hint={`${form.english_test} scores are valid for ${englishScoreValidityYears(form.english_test)} years from the test date.`}
                         error={errors.exam_date}
                         testId="field-exam_date"
                       >
-                        <Input
+                        <SafeDateInput
                           data-testid="input-exam_date"
-                          type="date"
                           value={form.exam_date}
                           onChange={(e) => set("exam_date", e.target.value)}
                           min={completedExamDateBounds.min}
@@ -1800,7 +1846,7 @@ export default function CalculatorClient({ today: initialToday }) {
                               >
                                 {/* Row 1 — status (left) + year (right) */}
                                 <Field
-                                  label={`${doc.label}`}
+                                  label={doc.label}
                                   error={
                                     errors[`sponsor_doc_${sp.id}_${doc.key}`]
                                   }
@@ -1829,7 +1875,6 @@ export default function CalculatorClient({ today: initialToday }) {
                                     </SelectContent>
                                   </Select>
                                 </Field>
-
                                 {doc.year_required && doc.status === "yes" && (
                                   <Field
                                     label="Year established"
@@ -1854,7 +1899,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                   </Field>
                                 )}
 
-                                {/* Row 2 — full width */}
+                                {/* Row 2 — full width: upload when Yes, note when No */}
                                 <div className="md:col-span-2">
                                   {doc.status === "yes" ? (
                                     <Field
@@ -1948,7 +1993,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                             e.target.value,
                                           )
                                         }
-                                        placeholder="Why is it not available?  "
+                                        placeholder="Why is it not available? e.g. waiting for bank statement"
                                       />
                                     </Field>
                                   ) : (
@@ -1986,11 +2031,12 @@ export default function CalculatorClient({ today: initialToday }) {
                       />
                     </Field>
                     {form.work_relevant_to_course && (
-                      <Field
-                        label="How is this experience relevant to your intended course?"
-                        error={errors.work_relevance_explanation}
-                        testId="field-work_relevance_explanation"
-                      >
+                      <div className="rounded-xl border border-border bg-muted/40 p-5">
+                        <Field
+                          label="How is this experience relevant to your intended course?"
+                          error={errors.work_relevance_explanation}
+                          testId="field-work_relevance_explanation"
+                        >
                         <Textarea
                           data-testid="input-work_relevance_explanation"
                           value={form.work_relevance_explanation}
@@ -2000,9 +2046,9 @@ export default function CalculatorClient({ today: initialToday }) {
                           placeholder="Briefly describe how your work experience relates to the course you're applying for"
                           rows={3}
                         />
-                      </Field>
+                        </Field>
+                      </div>
                     )}
-
                     <Field label="Can this employment be independently verified?">
                       <YesNo
                         value={form.work_verification_done}
@@ -2020,7 +2066,6 @@ export default function CalculatorClient({ today: initialToday }) {
                         testId="radio-work_verification_done"
                       />
                     </Field>
-
                     {form.work_verification_done && (
                       <div
                         className="rounded-xl border border-border bg-muted/40 p-5 space-y-4"
@@ -2029,7 +2074,6 @@ export default function CalculatorClient({ today: initialToday }) {
                         <div className="text-sm font-semibold text-foreground">
                           Verification contact
                         </div>
-
                         <div className="grid md:grid-cols-3 gap-5">
                           <Field
                             label="Contact name"
@@ -2049,7 +2093,6 @@ export default function CalculatorClient({ today: initialToday }) {
                               placeholder="Contact person's name"
                             />
                           </Field>
-
                           <Field
                             label="Contact phone"
                             hint="Number we can call to verify"
@@ -2072,7 +2115,6 @@ export default function CalculatorClient({ today: initialToday }) {
                               placeholder="10-digit phone number"
                             />
                           </Field>
-
                           <Field
                             label="Contact email"
                             hint="Email we can write to"
@@ -2172,18 +2214,17 @@ export default function CalculatorClient({ today: initialToday }) {
                                   errors[`employment_${record.id}_joining`]
                                 }
                               >
-                                <Input
-                                  type="date"
-                                  value={record.date_of_joining}
-                                  onChange={(e) =>
-                                    updateEmployment(
-                                      record.id,
-                                      "date_of_joining",
-                                      e.target.value,
-                                    )
-                                  }
-                                  max={today}
-                                />
+                              <SafeDateInput
+                                value={record.date_of_joining}
+                                onChange={(e) =>
+                                  updateEmployment(
+                                    record.id,
+                                    "date_of_joining",
+                                    e.target.value,
+                                  )
+                                }
+                                max={today}
+                              />
                               </Field>
                               <Field label="Currently working here?">
                                 <YesNo
@@ -2200,8 +2241,7 @@ export default function CalculatorClient({ today: initialToday }) {
                               </Field>
                               {!record.currently_working && (
                                 <Field label="Last working day">
-                                  <Input
-                                    type="date"
+                                  <SafeDateInput
                                     value={record.last_working_day}
                                     onChange={(e) =>
                                       updateEmployment(
@@ -2210,6 +2250,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                         e.target.value,
                                       )
                                     }
+                                    max={today}
                                   />
                                 </Field>
                               )}
@@ -2522,7 +2563,7 @@ export default function CalculatorClient({ today: initialToday }) {
                     )}
                   </div>
 
-                  <div className="hidden md:grid-cols-2 gap-6 pt-2 border-t border-border">
+                  <div className="hidden grid md:grid-cols-2 gap-6 pt-2 border-t border-border">
                     <Field
                       label="Is your work experience relevant to the intended course?"
                       testId="field-work_relevant_to_course"
@@ -2566,10 +2607,9 @@ export default function CalculatorClient({ today: initialToday }) {
                           testId="radio-course_in_line_with_previous_education"
                         />
                       </Field>
-
                       {form.course_in_line_with_previous_education ===
                         false && (
-                        <div className="mt-5">
+                        <div className="mt-5 rounded-xl border border-border bg-muted/40 p-4">
                           <Field
                             label="Why are you changing your field of study?"
                             error={errors.course_change_reason}
@@ -2678,7 +2718,7 @@ export default function CalculatorClient({ today: initialToday }) {
                       />
                     </Field>
                     {form.is_married && (
-                      <>
+                      <div className="space-y-6 rounded-xl border border-border bg-muted/40 p-4">
                         <Field
                           label="Spouse will accompany?"
                           testId="field-spouse_will_accompany"
@@ -2701,14 +2741,14 @@ export default function CalculatorClient({ today: initialToday }) {
                             }
                           />
                         </Field>
-                      </>
+                      </div>
                     )}
                   </div>
 
                   {/* Right column — child question, count directly below it */}
                   <div className="space-y-6">
                     {form.is_married && (
-                      <>
+                      <div className="space-y-6 rounded-xl border border-border bg-muted/40 p-4">
                         <Field
                           label="Does the student have a child?"
                           testId="field-has_child"
@@ -2769,7 +2809,7 @@ export default function CalculatorClient({ today: initialToday }) {
                             </SelectContent>
                           </Select>
                         </Field>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2937,7 +2977,7 @@ export default function CalculatorClient({ today: initialToday }) {
                       />
                     </Field>
                     {form.education_loan_required && (
-                      <div className="space-y-5 mt-5">
+                      <div className="mt-5 space-y-5 rounded-xl border border-border bg-muted/40 p-4 md:p-5">
                         <div className="grid md:grid-cols-2 gap-5">
                           <Field
                             label="Loan amount needed (₹)"

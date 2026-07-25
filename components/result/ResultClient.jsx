@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowRight, CheckCircle2, AlertCircle, Lightbulb, Sparkles, Download } from "lucide-react";
+import { ArrowRight, CheckCircle2, AlertCircle, Lightbulb, Sparkles, CalendarCheck } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 import Footer from "@/components/Footer";
 import Reveal from "@/components/Reveal";
 import { db, isFirebaseConfigured, COLLECTIONS } from "@/lib/firebase";
-import { downloadVisaReportPdf } from "@/lib/pdf";
 import { BREAKDOWN_LABELS } from "@/lib/scoring";
 
 const TIER_COLOR = {
@@ -91,13 +90,10 @@ export default function ResultClient() {
                             <div className="font-display font-black text-7xl md:text-8xl text-primary tracking-tighter leading-none" data-testid="score-value">{data.score}</div>
                             <div className="text-muted-foreground text-sm mt-2">out of 100</div>
                             <div className="mt-6 flex flex-col gap-2">
-                                <button
-                                    onClick={() => downloadVisaReportPdf(data)}
-                                    className="btn-primary w-full text-sm"
-                                    data-testid="download-pdf-btn"
-                                >
-                                    <Download size={16} /> Download PDF report
-                                </button>
+                                <Link href="/book-counselling" className="btn-primary w-full text-sm" data-testid="book-counselling-btn">
+                                    <CalendarCheck size={16} /> Book free counselling
+                                </Link>
+                                <p className="text-xs text-muted-foreground">Talk through this report with our counsellors — it&apos;s free.</p>
                             </div>
                         </div>
                     </Reveal>
@@ -178,7 +174,7 @@ export default function ResultClient() {
                     <Reveal className="surface-card p-10 md:p-16 bg-secondary text-white text-center border-secondary">
                         <h2 className="font-display text-3xl md:text-4xl font-black mb-3">Want a personalised plan?</h2>
                         <p className="text-white/70 max-w-xl mx-auto mb-8">Book a free 30-minute session with Mamta Jani's counselling team to convert this report into an action plan.</p>
-                        <Link href="/courses" className="btn-primary" data-testid="result-cta-courses">Explore courses for you <ArrowRight size={18} /></Link>
+                        <Link href="/book-counselling" className="btn-primary" data-testid="result-cta-counselling">Book free counselling <ArrowRight size={18} /></Link>
                     </Reveal>
                 </div>
             </section>
