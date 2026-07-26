@@ -2052,7 +2052,7 @@ export default function CalculatorClient({ today: initialToday }) {
                                             e.target.value,
                                           )
                                         }
-                                        placeholder="Why is it not available? e.g. waiting for bank statement"
+                                        placeholder="Why is it not available?  "
                                       />
                                     </Field>
                                   ) : (
