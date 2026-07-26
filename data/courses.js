@@ -92,3 +92,61 @@ export const COURSES = [
         image: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=800",
     },
 ];
+
+// General, university-agnostic courses — the ones students most commonly
+// look for. These are always shown at the top of the calculator's course
+// dropdown (merged in components/calculator/CalculatorClient.jsx, together
+// with the list above and any admin-managed courses). They are NOT shown on
+// the public /courses page. Add/edit general courses directly here.
+export const GENERAL_COURSES = [
+    // ── Postgraduate ────────────────────────────────────────────────
+    { id: "gc-mba", title: "Master of Business Administration (MBA)" },
+    { id: "gc-mit", title: "Master of Information Technology" },
+    { id: "gc-mcs", title: "Master of Computer Science" },
+    { id: "gc-mds", title: "Master of Data Science" },
+    { id: "gc-mba-analytics", title: "Master of Business Analytics" },
+    { id: "gc-mai", title: "Master of Artificial Intelligence" },
+    { id: "gc-mcyber", title: "Master of Cyber Security" },
+    { id: "gc-mpa", title: "Master of Professional Accounting" },
+    { id: "gc-mfin", title: "Master of Finance" },
+    { id: "gc-mmkt", title: "Master of Marketing" },
+    { id: "gc-mnur", title: "Master of Nursing" },
+    { id: "gc-mph", title: "Master of Public Health" },
+    { id: "gc-msw", title: "Master of Social Work" },
+    { id: "gc-mteach", title: "Master of Teaching" },
+    { id: "gc-medu", title: "Master of Education" },
+    { id: "gc-mpm", title: "Master of Project Management" },
+    { id: "gc-meng", title: "Master of Engineering" },
+    { id: "gc-mmech", title: "Master of Mechanical Engineering" },
+    { id: "gc-mcivil", title: "Master of Civil Engineering" },
+    { id: "gc-melec", title: "Master of Electrical Engineering" },
+    { id: "gc-mcm", title: "Master of Construction Management" },
+    { id: "gc-mscm", title: "Master of Supply Chain Management" },
+    { id: "gc-mib", title: "Master of International Business" },
+    { id: "gc-march", title: "Master of Architecture" },
+    // ── Undergraduate ───────────────────────────────────────────────
+    { id: "gc-bit", title: "Bachelor of Information Technology" },
+    { id: "gc-bcs", title: "Bachelor of Computer Science" },
+    { id: "gc-bbus", title: "Bachelor of Business" },
+    { id: "gc-bcom", title: "Bachelor of Commerce" },
+    { id: "gc-bacc", title: "Bachelor of Accounting" },
+    { id: "gc-bnur", title: "Bachelor of Nursing" },
+    { id: "gc-beng", title: "Bachelor of Engineering" },
+    { id: "gc-bds", title: "Bachelor of Data Science" },
+    { id: "gc-bcyber", title: "Bachelor of Cyber Security" },
+    { id: "gc-bhs", title: "Bachelor of Health Science" },
+    { id: "gc-bpsy", title: "Bachelor of Psychology" },
+    { id: "gc-bece", title: "Bachelor of Early Childhood Education" },
+    { id: "gc-bhm", title: "Bachelor of Hospitality Management" },
+    // ── Diploma / VET / Graduate certificates ───────────────────────
+    { id: "gc-dit", title: "Diploma of Information Technology" },
+    { id: "gc-dbus", title: "Diploma of Business" },
+    { id: "gc-dcs", title: "Diploma of Community Services" },
+    { id: "gc-decec", title: "Diploma of Early Childhood Education and Care" },
+    { id: "gc-dhm", title: "Diploma of Hospitality Management" },
+    { id: "gc-dnur", title: "Diploma of Nursing" },
+    { id: "gc-adeng", title: "Advanced Diploma of Engineering" },
+    { id: "gc-gdm", title: "Graduate Diploma in Management" },
+    { id: "gc-gdds", title: "Graduate Diploma in Data Science" },
+    { id: "gc-gcba", title: "Graduate Certificate in Business Analytics" },
+];

@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   Upload,
   FileText,
+  PenLine,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -78,7 +79,7 @@ import {
   validateCalculatorForm,
 } from "@/lib/validation";
 import { POLICY_VERSIONS } from "@/lib/policies";
-import { COURSES } from "@/data/courses";
+import { COURSES, GENERAL_COURSES } from "@/data/courses";
 import MiniMarksheetScanner from "@/components/MarksheetOCR/MiniMarksheetScanner";
 import SponsorSection from "@/components/sponsor/SponsorSection";
 import UniversityPicker from "../university/UniversityPicker";
@@ -798,13 +799,20 @@ export default function CalculatorClient({ today: initialToday }) {
       });
   }, []);
 
-  // Fall back to the built-in catalog whenever the managed (Firestore) list
-  // is unavailable or empty, so the picker is never blank.
-  const courseCatalog = useMemo(
-    () =>
-      managedCourses && managedCourses.length > 0 ? managedCourses : COURSES,
-    [managedCourses],
-  );
+  // Calculator course dropdown = general courses first, then the local
+  // catalog, then any admin-managed (Firestore) courses — merged by unique
+  // title so every source is usable and nothing shows twice.
+  const courseCatalog = useMemo(() => {
+    const base = [...GENERAL_COURSES, ...COURSES];
+    if (!managedCourses || managedCourses.length === 0) return base;
+    const seen = new Set(base.map((c) => (c.title || "").toLowerCase()));
+    return [
+      ...base,
+      ...managedCourses.filter(
+        (c) => !seen.has((c.title || "").toLowerCase()),
+      ),
+    ];
+  }, [managedCourses]);
 
   // Intended-course list adapts to the highest completed qualification:
   // 10th/12th → Bachelor-level courses, Graduation → Master/PhD-level courses.
@@ -3242,15 +3250,75 @@ function CoursePicker({
   testId,
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const query = search.trim();
+  const queryLower = query.toLowerCase();
+  const hasMatch =
+    !query ||
+    courses.some((course) =>
+      course.title.toLowerCase().includes(queryLower),
+    );
 
   const selectCourse = (course) => {
     onOtherChange(false);
     onChange(course.title);
     setOpen(false);
   };
+
+  // No catalog match — keep what the user typed and switch the FIELD itself
+  // into typing mode (dropdown closes, text stays in the same place).
+  const useTypedValue = () => {
+    if (!query) return;
+    onOtherChange(true);
+    onChange(query);
+    setOpen(false);
+  };
+
+  // Clicking "Other" closes the dropdown and the field becomes typeable.
+  // A real catalog selection is cleared; existing manual text is kept.
+  const startTyping = () => {
+    onOtherChange(true);
+    if (courses.some((course) => course.title === value)) onChange("");
+    setOpen(false);
+  };
+  if (isOther) {
+    return (
+      <div className="space-y-2">
+        <div className="relative">
+          <Input
+            autoFocus
+            className="h-9 bg-background px-3 pr-9 py-1 text-sm leading-5 text-foreground caret-foreground"
+            data-testid={`${testId}-other`}
+            value={value ?? ""}
+            onChange={(event) => {
+              onOtherChange(true);
+              onChange(event.target.value);
+            }}
+            placeholder="Type your course name"
+          />
+          <button
+            type="button"
+            title="Pick from the course list"
+            aria-label="Pick from the course list"
+            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground hover:text-foreground"
+            onClick={() => onOtherChange(false)}
+          >
+            <ChevronsUpDown className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-2">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setSearch("");
+        }}
+      >
         <PopoverTrigger asChild>
           <button
             type="button"
@@ -3258,9 +3326,9 @@ function CoursePicker({
             className="flex h-9 w-full items-center rounded-md border border-input bg-background px-3 py-1 text-left text-sm leading-5 shadow-sm ring-offset-background focus:outline-none focus:ring-1 focus:ring-ring"
           >
             <span
-              className={`min-w-0 flex-1 truncate leading-5 ${value && !isOther ? "" : "text-muted-foreground"}`}
+              className={`min-w-0 flex-1 truncate leading-5 ${value ? "" : "text-muted-foreground"}`}
             >
-              {isOther ? "Other course" : value || "Search and select a course"}
+              {value || "Search and select a course"}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 self-center opacity-50" />
           </button>
@@ -3270,14 +3338,18 @@ function CoursePicker({
           align="start"
         >
           <Command>
-            <CommandInput placeholder="Search courses or universities..." />
+            <CommandInput
+              placeholder="Search courses..."
+              value={search}
+              onValueChange={setSearch}
+            />
             <CommandList>
               <CommandEmpty>No courses found.</CommandEmpty>
               <CommandGroup>
                 {courses.map((course) => (
                   <CommandItem
                     key={course.id}
-                    value={`${course.title} ${course.university || ""}`}
+                    value={course.title}
                     onSelect={() => selectCourse(course)}
                   >
                     <Check
@@ -3285,44 +3357,41 @@ function CoursePicker({
                     />
                     <span className="min-w-0">
                       <span className="block truncate">{course.title}</span>
-                      {course.university && (
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {course.university}
-                        </span>
-                      )}
                     </span>
                   </CommandItem>
                 ))}
-                <CommandItem
-                  forceMount
-                  className="min-h-9 whitespace-nowrap leading-5"
-                  value="Other course enter manually"
-                  onSelect={() => {
-                    onOtherChange(true);
-                    onChange("");
-                    setOpen(false);
-                  }}
-                >
-                  Other course — enter manually
-                </CommandItem>
+              </CommandGroup>
+              {(!query || !hasMatch) && (
+                <div className="mx-1 my-1 h-px bg-border" aria-hidden="true" />
+              )}
+              <CommandGroup>
+                {query && !hasMatch ? (
+                  <CommandItem
+                    forceMount
+                    value={`typed-${queryLower}`}
+                    onSelect={useTypedValue}
+                  >
+                    <PenLine className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0 truncate">
+                      Use &quot;{query}&quot; — enter manually
+                    </span>
+                  </CommandItem>
+                ) : !query ? (
+                  <CommandItem
+                    forceMount
+                    className="min-h-9 whitespace-nowrap leading-5"
+                    value="Other course enter manually"
+                    onSelect={startTyping}
+                  >
+                    <PenLine className="h-4 w-4 shrink-0" />
+                    Other course — enter manually
+                  </CommandItem>
+                ) : null}
               </CommandGroup>
             </CommandList>
           </Command>
         </PopoverContent>
       </Popover>
-      {isOther && (
-        <Input
-          autoFocus
-          className="h-9 bg-background px-3 py-1 text-sm leading-5 text-foreground caret-foreground"
-          data-testid={`${testId}-other`}
-          value={value ?? ""}
-          onChange={(event) => {
-            onOtherChange(true);
-            onChange(event.target.value);
-          }}
-          placeholder="Enter your course name"
-        />
-      )}
     </div>
   );
 }
